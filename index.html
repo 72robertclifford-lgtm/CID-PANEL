@@ -2513,6 +2513,8 @@ window.addEventListener('load', async () => {
                         setTimeout(async () => {
                             try {
                                 await loadOrgMembersFromSupabase();
+                                await loadRapportAccessList();
+                                grantRapportLinkAccess(data.rapportId);
                                 await loadCidRapports();
                                 switchMainTab('rapport');
                                 setTimeout(() => openRapport(data.rapportId), 300);
@@ -3722,15 +3724,16 @@ async function checkPendingLink() {
     const data = JSON.parse(pending);
     localStorage.removeItem('cid_pending_link');
 
-    // Lien vers un rapport — accessible en lecture à tous
+    // Lien vers un rapport — accès via lien
     if (data.rapportId) {
         setTimeout(async () => {
             try {
                 await loadOrgMembersFromSupabase();
+                await loadRapportAccessList();
+                grantRapportLinkAccess(data.rapportId);
                 await loadCidRapports();
-                const rap = cidRapports.find(r => r.id === data.rapportId);
-                if (rap) { switchMainTab('rapport'); setTimeout(() => openRapport(data.rapportId), 300); }
-                else switchMainTab('rapport');
+                switchMainTab('rapport');
+                setTimeout(() => openRapport(data.rapportId), 300);
             } catch(e) { switchMainTab('rapport'); }
         }, 400);
         return;
@@ -6460,13 +6463,16 @@ function renderRapportsList(container) {
 
     if (canCreate) html += `<button class="btn-new-dossier" onclick="createRapport()">+ Créer un nouveau rapport</button>`;
 
-    if (cidRapports.length === 0) {
+    // Filtrer selon l'accès
+    const visibleRapports = cidRapports.filter(rap => canViewRapport(rap.id));
+
+    if (visibleRapports.length === 0) {
         html += `<div class="empty-state"><h2>Aucun rapport</h2><p>${canCreate ? 'Créez un nouveau rapport pour commencer' : 'Aucun rapport disponible'}</p></div>`;
         container.innerHTML = html;
         return;
     }
 
-    html += `<div class="dossiers-grid">` + cidRapports.map(rap => `
+    html += `<div class="dossiers-grid">` + visibleRapports.map(rap => `
         <div class="dossier-card">
             <div class="dossier-card-top">
                 <div class="dossier-card-icon">📋</div>
@@ -6482,6 +6488,7 @@ function renderRapportsList(container) {
                 <button class="dcard-btn dcard-btn-open" onclick="openRapport('${rap.id}')">📋 Ouvrir le rapport</button>
                 ${getPermLevel() !== 'procureur' ? `
                 <div class="dossier-card-actions-row">
+
                     <button class="dcard-btn" id="editorsbtn-rapport-${rap.id}" style="${getEditorsBtnStyle('rapport',rap.id)}" onclick="openEditorsModal('rapport','${rap.id}','${rap.name}')">${getEditorsBtnLabel('rapport',rap.id)}</button>
                     ${canWrite ? `<button class="dcard-btn dcard-btn-rename" onclick="renameRapport('${rap.id}')">✏️ Renommer</button>` : ''}
                     ${canDeleteDossier() ? `<button class="dcard-btn dcard-btn-del" onclick="deleteRapport('${rap.id}')">🗑 Suppr.</button>` : ''}
@@ -6962,6 +6969,63 @@ document.addEventListener('click', e => {
     const inp = document.getElementById('editorUsernameInput');
     if (box && inp && !inp.contains(e.target) && !box.contains(e.target)) box.style.display = 'none';
 });
+
+// ===== ACCÈS PAR LIEN — RAPPORTS =====
+let _rapportAccess = {};
+
+async function loadRapportAccessList() {
+    try {
+        const rows = await sbFetch('org_settings?key=eq.rapport_access&select=value');
+        if (rows && rows[0]) _rapportAccess = JSON.parse(rows[0].value || '{}');
+        else _rapportAccess = {};
+    } catch(e) {}
+}
+
+async function saveRapportAccess() {
+    try {
+        await fetch(`${SUPABASE_URL}/rest/v1/org_settings?key=eq.rapport_access`, {
+            method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+        });
+        await fetch(`${SUPABASE_URL}/rest/v1/org_settings`, {
+            method: 'POST',
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+            body: JSON.stringify({ key: 'rapport_access', value: JSON.stringify(_rapportAccess) })
+        });
+    } catch(e) {}
+}
+
+function getRapportAccessColor(id) {
+    return (_rapportAccess[id] || []).length > 0
+        ? 'background:rgba(46,125,50,0.2);color:#66bb6a;border:1px solid rgba(46,125,50,0.4);font-size:10px;font-weight:700;'
+        : 'background:rgba(183,28,28,0.15);color:#ef5350;border:1px solid rgba(183,28,28,0.3);font-size:10px;font-weight:700;';
+}
+
+function getRapportAccessLabel(id) {
+    return (_rapportAccess[id] || []).length > 0 ? '🟢 Accès par lien' : '🔴 Accès par lien';
+}
+
+function canViewRapport(id) {
+    // Procureur : jamais accès (même avec le lien)
+    if (getPermLevel() === 'procureur') return false;
+    // Tous les autres grades (detective, senior, master, supervisor, commanding) : accès direct
+    return true;
+}
+
+async function toggleRapportAccess(id) {
+    const current = _rapportAccess[id] || [];
+    _rapportAccess[id] = current.length > 0 ? [] : ['_open_'];
+    await saveRapportAccess();
+    const btn = document.getElementById('raccbtn-' + id);
+    if (btn) { btn.textContent = getRapportAccessLabel(id); btn.style.cssText = getRapportAccessColor(id); }
+    showSuccessDossiers(_rapportAccess[id].length > 0 ? '🟢 Accès par lien activé pour ce rapport' : '🔴 Accès par lien retiré pour ce rapport');
+}
+
+function grantRapportLinkAccess(id) {
+    if (!_rapportAccess[id] || !_rapportAccess[id].includes('_open_')) {
+        _rapportAccess[id] = ['_open_'];
+        // Pas de save Supabase ici — accès temporaire session uniquement
+    }
+}
 
 // ===== ACCÈS PROCUREUR — INTERROGATOIRES =====
 function getInterroAccessColor(interroId) {
