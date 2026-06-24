@@ -6188,7 +6188,7 @@ function renderDepositionEditor(container) {
             <div style="background:rgba(13,43,94,0.06);border-radius:10px;padding:16px;margin-bottom:16px;border:1px solid rgba(201,162,39,0.1);">
                 <div style="font-size:10px;color:#C9A227;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;">Informations administratives</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-                    <div><label style="font-size:11px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">Fait à (lieu)</label>
+                    <div><label style="font-size:14px;font-weight:800;color:var(--text);display:block;margin-bottom:4px;">Fait à (lieu)</label>
                     <input type="text" value="${depEsc(f.faitlieu)}" ${dis} oninput="depField('${id}','faitlieu',this.value)" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;background:var(--input-bg);color:var(--text);"></div>
                     <div><label style="font-size:11px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">Le (date)</label>
                     <input type="date" value="${depEsc(f.faitdate)}" ${dis} oninput="depField('${id}','faitdate',this.value)" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;background:var(--input-bg);color:var(--text);"></div>
@@ -6628,17 +6628,17 @@ function renderRapportEditor(container) {
                 <div style="font-size:10px;color:#C9A227;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;">Informations du rapport</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
                     <div>
-                        <label style="font-size:11px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">Fait à (lieu)</label>
+                        <label style="font-size:14px;font-weight:800;color:var(--text);display:block;margin-bottom:4px;">Fait à (lieu)</label>
                         <input type="text" value="${rapEsc(f.lieu)}" ${dis} oninput="rapField('${id}','lieu',this.value)" placeholder="Ex: Sandy Shores" style="${inp}">
                     </div>
                     <div>
-                        <label style="font-size:11px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">Heure</label>
+                        <label style="font-size:14px;font-weight:800;color:var(--text);display:block;margin-bottom:4px;">Heure</label>
                         <input type="time" value="${rapEsc(f.heure)}" ${dis} oninput="rapField('${id}','heure',this.value)" style="${inp}">
                     </div>
                 </div>
                 <div>
-                    <label style="font-size:11px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">Objet du rapport</label>
-                    <input type="text" value="${rapEsc(f.objet)}" ${dis} oninput="rapField('${id}','objet',this.value)" placeholder="Ex: Rapport d'Investigation Youngs" style="${inp}">
+                    <label style="font-size:14px;font-weight:800;color:var(--text);display:block;margin-bottom:4px;">Objet du rapport</label>
+                    <input type="text" value="${rapEsc(f.objet)}" ${dis} oninput="rapField('${id}','objet',this.value)" placeholder="Ex: Rapport d'Investigation Youngs" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:15px;font-weight:700;background:var(--input-bg);color:var(--text);">
                 </div>
             </div>
 
@@ -6651,7 +6651,7 @@ function renderRapportEditor(container) {
                 ${f.agents.map((agent, ai) => `
                 <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
                     <span style="color:#C9A227;font-weight:700;font-size:13px;min-width:16px;">•</span>
-                    <input type="text" value="${rapEsc(agent)}" ${dis} oninput="rapAgent('${id}',${ai},this.value)" placeholder="Grade | Prénom Nom" style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;background:var(--input-bg);color:var(--text);">
+                    <input type="text" value="${rapEsc(agent)}" ${dis} oninput="rapAgent('${id}',${ai},this.value)" placeholder="Grade | Prénom Nom" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:7px;font-size:15px;font-weight:700;background:var(--input-bg);color:var(--text);">
                     ${canWrite && f.agents.length > 1 ? `<button onclick="rapDelAgent('${id}',${ai})" style="background:rgba(211,47,47,0.1);color:#d32f2f;border:1px solid rgba(211,47,47,0.2);padding:4px 8px;border-radius:6px;cursor:pointer;font-size:11px;">✕</button>` : ''}
                 </div>`).join('')}
             </div>
