@@ -1584,7 +1584,7 @@ async function doLogin() {
         localStorage.setItem('cid_session', JSON.stringify(currentUser));
         showPage('pageDossiers');
         renderUserHeader();
-        setTimeout(async () => { try { await loadOrgMembersFromSupabase(); } catch(e){} renderUserHeader(); renderDossiersList(); renderInlineOrg(); try { syncOrgGradesFromAccounts(); } catch(e){} const docTab = document.getElementById('tabDocuments'); if(docTab) docTab.style.display = getPermLevel() === 'procureur' ? 'none' : ''; }, 300);
+        setTimeout(async () => { try { await loadOrgMembersFromSupabase(); } catch(e){} try { await loadDocEditors(); } catch(e){} renderUserHeader(); renderDossiersList(); renderInlineOrg(); try { syncOrgGradesFromAccounts(); } catch(e){} const docTab = document.getElementById('tabDocuments'); if(docTab) docTab.style.display = getPermLevel() === 'procureur' ? 'none' : ''; }, 300);
         setTimeout(() => checkPendingLink(), 300);
     } catch(e) { showMsg('loginMsg','Erreur: ' + e.message,'error'); }
 }
@@ -2565,6 +2565,7 @@ window.addEventListener('load', async () => {
             showPage('pageDossiers');
             renderUserHeader();
             showQuickAdminBtn();
+            try { await loadDocEditors(); } catch(e){}
             await renderDossiersList();
 
         } else if (acc && acc.status !== 'approved') {
@@ -2575,6 +2576,7 @@ window.addEventListener('load', async () => {
             showPage('pageDossiers');
             renderUserHeader();
             showQuickAdminBtn();
+            try { await loadDocEditors(); } catch(e){}
             await renderDossiersList();
         }
     } catch(e) {
