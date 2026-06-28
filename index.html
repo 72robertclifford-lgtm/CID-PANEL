@@ -6115,8 +6115,8 @@ async function _doCreateDeposition(trimmed) {
     renderMainDepositionTab();
 }
 
-function openDeposition(id) { currentDepositionId = id; renderMainDepositionTab(); startInterroAutosave(id); }
-function closeDeposition() { stopInterroAutosave(); saveCidDepositions(); currentDepositionId = null; renderMainDepositionTab(); }
+function openDeposition(id) { currentDepositionId = id; renderMainDepositionTab(); startInterroAutosave(id); startInterroPolling(id); }
+function closeDeposition() { stopInterroAutosave(); stopInterroPolling(); saveCidDepositions(); currentDepositionId = null; renderMainDepositionTab(); }
 
 async function renameDeposition(id) {
     const dep = cidDepositions.find(d => d.id === id);
@@ -6377,6 +6377,80 @@ function copyInterroLink(id) {
         const msg = document.getElementById('interroSaveMsg');
         if (msg) { msg.textContent = '🔗 Lien copié ! Envoie-le à un membre connecté.'; msg.style.display = 'block'; setTimeout(() => { if(msg) msg.style.display='none'; }, 3000); }
     }).catch(() => { prompt('Copie ce lien :', link); });
+}
+
+// ===== POLLING TEMPS RÉEL — INTERROGATOIRES =====
+let _interroPollingInterval = null;
+let _interroLastHash = null;
+
+function _hashInterro(dep) {
+    // Hash rapide basé sur le contenu modifié
+    return JSON.stringify(dep).length + '_' + (dep.modified_at || '');
+}
+
+async function _pollInterroUpdates() {
+    if (!currentDepositionId) { stopInterroPolling(); return; }
+    try {
+        const rows = await sbFetch('org_settings?key=eq.cid_depositions&select=value');
+        if (!rows || !rows[0]) return;
+        const remoteList = JSON.parse(rows[0].value || '[]');
+        const remoteDep = remoteList.find(d => d.id === currentDepositionId);
+        if (!remoteDep) return;
+
+        const localDep = cidDepositions.find(d => d.id === currentDepositionId);
+        const remoteHash = _hashInterro(remoteDep);
+        const localHash = localDep ? _hashInterro(localDep) : null;
+
+        // Si différent ET que c'est pas nous qui venons de modifier (autosave < 5s)
+        if (remoteHash !== _interroLastHash && remoteHash !== localHash) {
+            // Mettre à jour les données locales
+            const idx = cidDepositions.findIndex(d => d.id === currentDepositionId);
+            if (idx >= 0) cidDepositions[idx] = remoteDep;
+            _interroLastHash = remoteHash;
+            localStorage.setItem('cid_depositions', JSON.stringify(cidDepositions));
+
+            // Afficher une notif discrète
+            showInterroUpdateNotif();
+
+            // Re-rendre l'éditeur en préservant le focus
+            const focused = document.activeElement;
+            const focusedId = focused ? focused.id : null;
+            const container = document.getElementById('mainDepositionContent');
+            if (container && currentDepositionId) {
+                renderDepositionEditor(container);
+                // Restaurer le focus
+                if (focusedId) {
+                    const el = document.getElementById(focusedId);
+                    if (el) el.focus();
+                }
+            }
+        } else if (!_interroLastHash) {
+            _interroLastHash = remoteHash;
+        }
+    } catch(e) {}
+}
+
+function showInterroUpdateNotif() {
+    const msg = document.getElementById('interroSaveMsg');
+    if (msg) {
+        msg.textContent = '🔄 Mis à jour par un autre membre';
+        msg.style.background = '#e3f2fd';
+        msg.style.color = '#1565c0';
+        msg.style.borderColor = '#90caf9';
+        msg.style.display = 'block';
+        setTimeout(() => { if(msg) { msg.style.display='none'; msg.style.background=''; msg.style.color=''; msg.style.borderColor=''; } }, 3000);
+    }
+}
+
+function startInterroPolling(id) {
+    stopInterroPolling();
+    _interroLastHash = null;
+    _interroPollingInterval = setInterval(_pollInterroUpdates, 30000);
+}
+
+function stopInterroPolling() {
+    if (_interroPollingInterval) { clearInterval(_interroPollingInterval); _interroPollingInterval = null; }
+    _interroLastHash = null;
 }
 
 // ===== SAUVEGARDE INTERROGATOIRE =====
