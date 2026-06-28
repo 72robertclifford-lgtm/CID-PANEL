@@ -5994,12 +5994,14 @@ function blankDepositionForm() {
 
 // ---- Stockage partagé (Supabase org_settings) + fallback localStorage ----
 async function loadCidDepositions() {
-    // Nettoyage ancien système
     localStorage.removeItem('cid_main_depositions');
     try {
         const rows = await sbFetch('org_settings?key=eq.cid_depositions&select=value');
         if (rows && rows[0]) {
-            cidDepositions = JSON.parse(rows[0].value || '[]');
+            const remote = JSON.parse(rows[0].value || '[]');
+            const local = JSON.parse(localStorage.getItem('cid_depositions') || '[]');
+            // Garder la version avec le plus d'éléments pour éviter d'écraser une création récente
+            cidDepositions = remote.length >= local.length ? remote : local;
             cidDepositionsLoaded = true;
             localStorage.setItem('cid_depositions', JSON.stringify(cidDepositions));
             return;
