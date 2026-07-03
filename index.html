@@ -4582,7 +4582,7 @@ function switchMainTab(tab) {
     if (tab === 'documents') renderDocumentsTab();
     if (tab === 'deposition') { currentDepositionId = null; renderMainDepositionTab(); }
     if (tab === 'rapport') { currentRapportId = null; renderMainRapportTab(); }
-    if (tab === 'carte') { const _carteAlreadyInit = !!_carteMap; initCarte(); setTimeout(() => { if(_carteMap) { _carteMap.invalidateSize(true); if (!_carteAlreadyInit) _carteMap.fitBounds([[0,0],[1291,1375]],{padding:[10,10]}); } }, 300); }
+    if (tab === 'carte') { initCarte(); setTimeout(() => { if(_carteMap) { _carteMap.invalidateSize(true); } }, 300); }
     // Sauvegarder l'onglet actif pour le restaurer au refresh
     try { sessionStorage.setItem('cid_active_tab', tab); } catch(e) {}
 
@@ -7781,10 +7781,10 @@ async function initCarte() {
 
         <!-- Carte : image haute résolution + canvas overlay Leaflet -->
         <div style="flex:1;position:relative;overflow:hidden;">
-            <div id="gtaMap" style="width:100%;height:100%;position:absolute;top:0;left:0;z-index:2;background:#1a5c8a;"></div>
+            <canvas id="gtaMap" style="width:100%;height:100%;position:absolute;top:0;left:0;z-index:2;background:#1a5c8a;touch-action:none;"></canvas>
             <div style="position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:500;">
-                <button onclick="if(_carteMap)_carteMap.zoomIn()" style="width:32px;height:32px;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;">+</button>
-                <button onclick="if(_carteMap)_carteMap.zoomOut()" style="width:32px;height:32px;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;">−</button>
+                <button onclick="if(window._cvMap)_cvMap.zoomBy(1)" style="width:32px;height:32px;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;">+</button>
+                <button onclick="if(window._cvMap)_cvMap.zoomBy(-1)" style="width:32px;height:32px;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;">−</button>
             </div>
             <!-- Indicateur mode zone : flottant sur la carte, bien visible -->
             <div id="drawingStatus" style="display:none;position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:600;background:#0f1628;border:2px solid #C9A227;padding:12px 20px;border-radius:12px;color:#C9A227;font-size:14px;font-weight:800;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,0.5);">
@@ -7839,105 +7839,357 @@ async function initCarte() {
 let _currentLayer = 'atlas';
 let _tileLayer = null;
 
+// ===== MOTEUR CARTE CANVAS CUSTOM (remplace Leaflet) =====
+// Système de coordonnées interne conservé: [lat, lng] avec lat/lng dans [0, 1291]x[0, 1375]
+// comme avant, pour rester compatible avec les données déjà enregistrées (_cartePoints, _carteZones).
 function _initLeafletMap() {
-    if (!window.L) return;
+    const canvas = document.getElementById('gtaMap');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const IMG_W = 1375, IMG_H = 1291; // largeur/hauteur logique de l'image (lng=x jusqu'à 1375, lat=y jusqu'à 1291)
 
-    // Carte GTA V CRS.Simple
-    _carteMap = L.map('gtaMap', {
-        crs: L.CRS.Simple,
-        minZoom: -4,
-        maxZoom: 9,
-        zoomSnap: 0.25,
-        zoomDelta: 0.5,
-        wheelPxPerZoomLevel: 90,
-        zoomControl: false,
-        attributionControl: false,
-        fadeAnimation: false,
-        zoomAnimation: true,
-        markerZoomAnimation: true,
-        preferCanvas: false,
-    });
-    const bounds = [[-145, -200], [0, 0]]; // inutilisé
-
-    // Tuiles GTA V depuis cdnjs
-    document.getElementById('gtaMap').style.background = '#1a5c8a';
-
-    // Image carte GTA V — centrée et ajustée
-    const mapBounds = [[0, 0], [1291, 1375]];
-    const mapCenter = [645, 687]; // centre de l'image
-    // Charger l'image : priorité URL custom, sinon base64 intégré
     const _customUrl = localStorage.getItem('cid_carte_image_url');
     const _mapSrc = _customUrl || window._gtaMapB64;
-    
-    _tileLayer = L.imageOverlay(_mapSrc, mapBounds, { 
-        opacity: 1,
-        crossOrigin: _customUrl ? 'anonymous' : null,
-        interactive: false
-    }).addTo(_carteMap);
-    // Rendu net (pas de flou lissé à l'excès) tout en gardant une bonne qualité au zoom
-    if (_tileLayer.getElement) {
-        const imgEl = _tileLayer.getElement();
-        if (imgEl) { imgEl.style.imageRendering = 'auto'; imgEl.setAttribute('draggable', 'false'); }
+    const img = new Image();
+    if (_customUrl) img.crossOrigin = 'anonymous';
+    let imgLoaded = false;
+
+    let scale = 1;       // pixels écran par unité image
+    let minScale = 0.1;
+    let maxScale = 8;    // recalculé après chargement selon la résolution réelle de l'image
+    let offX = 0, offY = 0; // décalage écran du coin (0,0) de l'image
+    let dpr = Math.max(1, window.devicePixelRatio || 1);
+
+    img.onload = () => {
+        imgLoaded = true;
+        // Le zoom max autorisé correspond à la résolution native de l'image (1 pixel image = 1 pixel écran physique),
+        // ce qui garantit qu'on ne zoome jamais au-delà de ce que l'image peut afficher nettement.
+        maxScale = img.naturalWidth ? Math.max(4, Math.min(16, img.naturalWidth / IMG_W)) : 8;
+        fitToScreen();
+        draw();
+    };
+    img.src = _mapSrc;
+
+    function resizeCanvas() {
+        const rect = canvas.parentElement.getBoundingClientRect();
+        dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.max(1, Math.round(rect.width * dpr));
+        canvas.height = Math.max(1, Math.round(rect.height * dpr));
+        canvas.style.width = rect.width + 'px';
+        canvas.style.height = rect.height + 'px';
     }
-    _carteMap.setMinZoom(-4);
-    _carteMap.setMaxZoom(9);
-    setTimeout(() => {
-        _carteMap.invalidateSize(true);
-        _carteMap.fitBounds(mapBounds, { padding: [10, 10] });
-    }, 200);
-    window._carteTileUrls = {};
 
-    _carteMap.setView([0, 0], 4);
+    function fitToScreen() {
+        resizeCanvas();
+        const cw = canvas.width / dpr, ch = canvas.height / dpr;
+        const s = Math.min(cw / IMG_W, ch / IMG_H);
+        minScale = s; // impossible de dézoomer plus que "image entière visible"
+        scale = s;
+        offX = (cw - IMG_W * s) / 2;
+        offY = (ch - IMG_H * s) / 2;
+        clampOffset();
+    }
 
-    // Événements
-    _carteMap.on('click', (e) => {
-        if (e.originalEvent.ctrlKey || e.originalEvent.metaKey) {
-            document.getElementById('carteLat').value = e.latlng.lat;
-            document.getElementById('carteLng').value = e.latlng.lng;
+    function clampOffset() {
+        const cw = canvas.width / dpr, ch = canvas.height / dpr;
+        const imgScreenW = IMG_W * scale, imgScreenH = IMG_H * scale;
+        // Empêche de sortir de la carte : si l'image est plus grande que l'écran, borne le pan ;
+        // sinon centre-la (comportement équivalent à maxBounds Leaflet).
+        if (imgScreenW <= cw) {
+            offX = (cw - imgScreenW) / 2;
+        } else {
+            offX = Math.min(0, Math.max(cw - imgScreenW, offX));
+        }
+        if (imgScreenH <= ch) {
+            offY = (ch - imgScreenH) / 2;
+        } else {
+            offY = Math.min(0, Math.max(ch - imgScreenH, offY));
+        }
+    }
+
+    // Conversions écran <-> "lat/lng" (coordonnées internes, compatibles avec l'existant)
+    // lng = x image, lat = (IMG_H - y image) pour garder l'axe Y inversé comme CRS.Simple de Leaflet
+    function screenToLatLng(px, py) {
+        const ix = (px - offX) / scale;
+        const iy = (py - offY) / scale;
+        return { lat: IMG_H - iy, lng: ix };
+    }
+    function latLngToScreen(lat, lng) {
+        const ix = lng;
+        const iy = IMG_H - lat;
+        return { x: offX + ix * scale, y: offY + iy * scale };
+    }
+
+    function draw() {
+        const cw = canvas.width / dpr, ch = canvas.height / dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, cw, ch);
+        ctx.fillStyle = '#1a5c8a';
+        ctx.fillRect(0, 0, cw, ch);
+        if (imgLoaded) {
+            // Lissage toujours actif en qualité maximale : le navigateur choisit le meilleur filtre
+            // (bilinéaire/mipmaps) qu'on soit en vue large ou zoomée, ce qui évite le crénelage
+            // et le flou grossier qu'on avait en dézoomé.
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, offX, offY, IMG_W * scale, IMG_H * scale);
+        }
+
+        // Zones
+        _carteZones.forEach(zone => {
+            const zt = ZONE_TYPES[zone.type] || ZONE_TYPES.danger;
+            if (!zone.points || zone.points.length < 3) return;
+            ctx.beginPath();
+            zone.points.forEach((p, i) => {
+                const s = latLngToScreen(p[0], p[1]);
+                if (i === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+            });
+            ctx.closePath();
+            ctx.fillStyle = zt.color + '30';
+            ctx.fill();
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = zt.color;
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([7, 5]);
+            ctx.stroke();
+            // Liseré blanc fin par-dessus pour détacher la zone du fond de carte, quelle que soit sa couleur
+            ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([]);
+            ctx.stroke();
+        });
+
+        // Polyligne temporaire (dessin de zone en cours)
+        if (_drawingZone && _zonePoints.length > 0) {
+            ctx.beginPath();
+            _zonePoints.forEach((p, i) => {
+                const s = latLngToScreen(p[0], p[1]);
+                if (i === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+            });
+            if (_zonePoints.length > 1) {
+                const s0 = latLngToScreen(_zonePoints[0][0], _zonePoints[0][1]);
+                ctx.lineTo(s0.x, s0.y);
+            }
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = '#C9A227';
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([5, 5]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            // Points de tracé, pour bien voir chaque sommet posé
+            _zonePoints.forEach(p => {
+                const s = latLngToScreen(p[0], p[1]);
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, 4, 0, Math.PI * 2);
+                ctx.fillStyle = '#C9A227';
+                ctx.fill();
+                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = '#ffffff';
+                ctx.stroke();
+            });
+        }
+
+        // Points
+        _cartePoints.forEach(pt => {
+            if (pt._hidden) return;
+            const t = POINT_TYPES[pt.type] || POINT_TYPES.divers;
+            const s = latLngToScreen(pt.lat, pt.lng);
+            const r = 20;
+
+            // Ombre portée douce sous le marqueur (profondeur, meilleure lisibilité sur fond clair ou chargé)
+            ctx.save();
+            ctx.shadowColor = 'rgba(0,0,0,0.45)';
+            ctx.shadowBlur = 10;
+            ctx.shadowOffsetY = 3;
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+            ctx.fillStyle = t.color;
+            ctx.fill();
+            ctx.restore();
+
+            // Contour blanc net (sans ombre, pour rester crisp)
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+
+            // Icône, rendue nette sans flou parasite
+            ctx.font = '700 20px "Segoe UI Emoji","Apple Color Emoji",sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(t.icon, s.x, s.y + 1);
+        });
+    }
+
+    function findPointAt(px, py) {
+        for (let i = _cartePoints.length - 1; i >= 0; i--) {
+            const pt = _cartePoints[i];
+            if (pt._hidden) continue;
+            const s = latLngToScreen(pt.lat, pt.lng);
+            const dx = px - s.x, dy = py - s.y;
+            if (dx * dx + dy * dy <= 22 * 22) return pt;
+        }
+        return null;
+    }
+
+    function findZoneAt(px, py) {
+        const ll = screenToLatLng(px, py);
+        for (let i = _carteZones.length - 1; i >= 0; i--) {
+            const zone = _carteZones[i];
+            if (!zone.points || zone.points.length < 3) continue;
+            if (_pointInPolygon(ll.lat, ll.lng, zone.points)) return zone;
+        }
+        return null;
+    }
+
+    function zoomAt(px, py, factor) {
+        const before = screenToLatLng(px, py);
+        let newScale = scale * factor;
+        newScale = Math.min(maxScale, Math.max(minScale, newScale));
+        scale = newScale;
+        const after = latLngToScreen(before.lat, before.lng);
+        offX += px - after.x;
+        offY += py - after.y;
+        clampOffset();
+        draw();
+    }
+
+    // Événements souris
+    let dragging = false, dragMoved = false, lastX = 0, lastY = 0;
+    canvas.addEventListener('mousedown', (e) => {
+        dragging = true; dragMoved = false;
+        lastX = e.offsetX; lastY = e.offsetY;
+    });
+    window.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const rect = canvas.getBoundingClientRect();
+        const px = e.clientX - rect.left, py = e.clientY - rect.top;
+        const dx = px - lastX, dy = py - lastY;
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) dragMoved = true;
+        if (dragMoved) {
+            offX += dx; offY += dy;
+            clampOffset();
+            lastX = px; lastY = py;
+            draw();
+        }
+    });
+    window.addEventListener('mouseup', () => { dragging = false; });
+
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const px = e.clientX - rect.left, py = e.clientY - rect.top;
+        const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+        zoomAt(px, py, factor);
+    }, { passive: false });
+
+    canvas.addEventListener('click', (e) => {
+        if (dragMoved) { dragMoved = false; return; }
+        const rect = canvas.getBoundingClientRect();
+        const px = e.clientX - rect.left, py = e.clientY - rect.top;
+        const ll = screenToLatLng(px, py);
+
+        if (e.ctrlKey || e.metaKey) {
+            document.getElementById('carteLat').value = ll.lat;
+            document.getElementById('carteLng').value = ll.lng;
             document.getElementById('cartePointNom').value = '';
             document.getElementById('cartePointDesc').value = '';
             const m = document.getElementById('carteModal');
             m.style.display = 'flex';
             setTimeout(() => document.getElementById('cartePointNom').focus(), 100);
-        } else if (e.originalEvent.altKey) {
+            return;
+        }
+        if (e.altKey) {
             if (!_drawingZone) {
                 _drawingZone = true;
                 _zonePoints = [];
                 document.getElementById('drawingStatus').style.display = 'block';
             }
-            _zonePoints.push([e.latlng.lat, e.latlng.lng]);
-            if (_tempPolyline) _carteMap.removeLayer(_tempPolyline);
-            if (_zonePoints.length > 1) {
-                _tempPolyline = L.polyline([..._zonePoints, _zonePoints[0]], {
-                    color: '#C9A227', dashArray: '5,5', weight: 2
-                }).addTo(_carteMap);
-            }
+            _zonePoints.push([ll.lat, ll.lng]);
+            draw();
+            return;
         }
+
+        // Clic simple : ouvrir popup point/zone sous le curseur
+        const pt = findPointAt(px, py);
+        if (pt) { _openCartePopup(pt, 'point', px, py); return; }
+        const zone = findZoneAt(px, py);
+        if (zone) { _openCartePopup(zone, 'zone', px, py); return; }
+        _closeCartePopup();
+
         const u = document.getElementById('carteUser');
-        if (u) u.textContent = 'Lat: ' + e.latlng.lat.toFixed(3) + ' | Lng: ' + e.latlng.lng.toFixed(3);
+        if (u) u.textContent = 'Lat: ' + ll.lat.toFixed(3) + ' | Lng: ' + ll.lng.toFixed(3);
     });
 
+    window.addEventListener('resize', () => { fitToScreen(); draw(); });
+
+    // API exposée compatible avec le reste du code (remplace l'objet Leaflet _carteMap)
+    window._cvMap = {
+        zoomBy(steps) { const rect = canvas.getBoundingClientRect(); zoomAt(rect.width/2, rect.height/2, Math.pow(1.4, steps)); },
+        goTo(lat, lng) {
+            const rect = canvas.getBoundingClientRect();
+            scale = Math.min(maxScale, Math.max(scale, minScale * 3));
+            const s = latLngToScreen(lat, lng);
+            offX += rect.width/2 - s.x;
+            offY += rect.height/2 - s.y;
+            clampOffset();
+            draw();
+        },
+        redraw: draw,
+        invalidateSize() { fitToScreen(); draw(); },
+    };
+    _carteMap = window._cvMap; // conserve la référence utilisée ailleurs dans le code
+
+    fitToScreen();
+    draw();
     renderCarteMarkers();
     renderCartePointsList();
 }
 
-function setMapLayer(type) {
-    _currentLayer = type;
-    if (_carteMap && _tileLayer && window._carteTileUrls) {
-        _carteMap.removeLayer(_tileLayer);
-        _tileLayer = L.tileLayer(window._carteTileUrls[type] || window._carteTileUrls.atlas, {
-            minZoom: 0, maxZoom: 7, tileSize: 256, noWrap: true,
-            errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
-        }).addTo(_carteMap);
+function _pointInPolygon(lat, lng, points) {
+    // Ray casting — points est un tableau de [lat, lng]
+    let inside = false;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+        const yi = points[i][0], xi = points[i][1];
+        const yj = points[j][0], xj = points[j][1];
+        const intersect = ((yi > lat) !== (yj > lat)) &&
+            (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
     }
-    ['atlas','route','satellite'].forEach(t => {
-        const btn = document.getElementById('btn' + t.charAt(0).toUpperCase() + t.slice(1));
-        if (btn) {
-            btn.style.background = t === type ? 'rgba(201,162,39,0.15)' : 'transparent';
-            btn.style.borderColor = t === type ? 'rgba(201,162,39,0.3)' : 'rgba(255,255,255,0.1)';
-            btn.style.color = t === type ? '#C9A227' : 'rgba(255,255,255,0.5)';
-        }
-    });
+    return inside;
+}
+
+// Popup léger custom (remplace L.popup)
+function _openCartePopup(obj, kind, px, py) {
+    _closeCartePopup();
+    const div = document.createElement('div');
+    div.id = 'cvPopup';
+    div.style.cssText = 'position:absolute;z-index:700;background:#0f1628;border:1px solid rgba(201,162,39,0.3);border-radius:10px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,0.5);max-width:220px;font-size:12px;color:white;';
+    div.style.left = px + 'px';
+    div.style.top = py + 'px';
+    if (kind === 'point') {
+        const t = POINT_TYPES[obj.type] || POINT_TYPES.divers;
+        div.innerHTML = '<b style="color:' + t.color + ';font-size:14px">' + obj.nom + '</b><br><small style="color:#888">' + t.label + ' · @' + obj.by + ' · ' + obj.at + '</small>'
+            + (obj.desc ? '<p style="font-size:12px;margin:4px 0">' + obj.desc + '</p>' : '')
+            + '<br><button onclick="deleteCartePoint(\'' + obj.id + '\')" style="margin-top:4px;background:#d32f2f;color:white;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px;">🗑 Supprimer</button>';
+    } else {
+        const zt = ZONE_TYPES[obj.type] || ZONE_TYPES.danger;
+        div.innerHTML = '<b>' + obj.nom + '</b><br><small>' + zt.label + ' · @' + obj.by + '</small><br><button onclick="deleteCarteZone(\'' + obj.id + '\')" style="margin-top:6px;background:#d32f2f;color:white;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px;">🗑 Supprimer</button>';
+    }
+    const parent = document.getElementById('gtaMap').parentElement;
+    parent.appendChild(div);
+}
+function _closeCartePopup() {
+    const el = document.getElementById('cvPopup');
+    if (el) el.remove();
+}
+
+function setMapLayer(type) {
+    // Conservé pour compatibilité (les boutons de calque ne sont plus affichés dans cette UI,
+    // la carte custom canvas n'utilise qu'une seule image source).
+    _currentLayer = type;
 }
 
 function confirmAddPoint() {
@@ -7962,8 +8214,8 @@ function finishZone() {
 
 function cancelZone() {
     _drawingZone = false; _zonePoints = [];
-    if (_tempPolyline) { _carteMap.removeLayer(_tempPolyline); _tempPolyline = null; }
     document.getElementById('drawingStatus').style.display = 'none';
+    if (window._cvMap) _cvMap.redraw();
 }
 
 function confirmAddZone() {
@@ -7979,37 +8231,10 @@ function confirmAddZone() {
 }
 
 function renderCarteMarkers() {
-    if (!_carteMap) return;
-    _carteMarkers.forEach(m => _carteMap.removeLayer(m));
-    _carteMarkers = [];
-    _carteZoneLayers.forEach(z => _carteMap.removeLayer(z));
-    _carteZoneLayers = [];
+    // Le rendu réel se fait dans draw() du moteur canvas ; on redessine simplement,
+    // et on met à jour les compteurs de catégories dans la sidebar.
+    if (window._cvMap) _cvMap.redraw();
 
-    // Zones
-    _carteZones.forEach(zone => {
-        const zt = ZONE_TYPES[zone.type] || ZONE_TYPES.danger;
-        const poly = L.polygon(zone.points, {
-            color: zt.color, fillColor: zt.color, fillOpacity: 0.2, weight: 2, dashArray: '6,4'
-        }).addTo(_carteMap);
-        poly.bindPopup('<b>' + zone.nom + '</b><br><small>' + zt.label + ' · @' + zone.by + '</small><br><button onclick="deleteCarteZone(\'' + zone.id + '\')" style="margin-top:6px;background:#d32f2f;color:white;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px;">🗑 Supprimer</button>');
-        _carteZoneLayers.push(poly);
-    });
-
-    // Points
-    _cartePoints.forEach(pt => {
-        const t = POINT_TYPES[pt.type] || POINT_TYPES.divers;
-        const icon = L.divIcon({
-            className: '',
-            html: '<div style="width:42px;height:42px;border-radius:50%;background:'+t.color+';border:3px solid white;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 3px 12px rgba(0,0,0,0.5);cursor:pointer;" onmouseover="this.style.transform=\'scale(1.2)\'" onmouseout="this.style.transform=\'\'">' + t.icon + '</div>',
-            iconSize: [42, 42],
-            iconAnchor: [21, 21],
-        });
-        const m = L.marker([pt.lat, pt.lng], { icon }).addTo(_carteMap);
-        m.bindPopup('<b style="color:' + t.color + ';font-size:14px">' + pt.nom + '</b><br><small style="color:#888">' + t.label + ' · @' + pt.by + ' · ' + pt.at + '</small>' + (pt.desc ? '<p style="font-size:12px;margin:4px 0">' + pt.desc + '</p>' : '') + '<br><button onclick="deleteCartePoint(\'' + pt.id + '\')" style="margin-top:4px;background:#d32f2f;color:white;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px;">🗑 Supprimer</button>');
-        _carteMarkers.push(m);
-    });
-
-    // Compteurs
     Object.keys(POINT_TYPES).forEach(k => {
         const el = document.getElementById('count-' + k);
         if (el) el.textContent = _cartePoints.filter(p => p.type === k).length;
@@ -8041,16 +8266,15 @@ function filterCartePoints(q) {
 
 function goToPoint(id) {
     const pt = _cartePoints.find(p => p.id === id);
-    if (!pt || !_carteMap) return;
-    _carteMap.setView([pt.lat, pt.lng], 1);
-    const m = _carteMarkers[_cartePoints.findIndex(p => p.id === id)];
-    if (m) m.openPopup();
+    if (!pt || !window._cvMap) return;
+    _cvMap.goTo(pt.lat, pt.lng);
 }
 
 function deleteCartePoint(id) {
     if (!confirm('Supprimer ce point ?')) return;
     _cartePoints = _cartePoints.filter(p => p.id !== id);
     saveCarteData();
+    _closeCartePopup();
     renderCarteMarkers();
     renderCartePointsList();
 }
@@ -8059,28 +8283,24 @@ function deleteCarteZone(id) {
     if (!confirm('Supprimer cette zone ?')) return;
     _carteZones = _carteZones.filter(z => z.id !== id);
     saveCarteData();
+    _closeCartePopup();
     renderCarteMarkers();
 }
 
 function toggleCarteCategory(cat) {
-    // Toggle visibilité des points par catégorie
-    _carteMarkers.forEach((m, i) => {
-        const pt = _cartePoints[i];
-        if (!pt) return;
-        if (cat === 'all' || pt.type === cat) {
-            m.addTo(_carteMap);
-        } else {
-            _carteMap.removeLayer(m);
-        }
+    // Toggle visibilité des points par catégorie (marqué _hidden, lu par le moteur canvas)
+    _cartePoints.forEach(pt => {
+        pt._hidden = !(cat === 'all' || pt.type === cat);
     });
+    renderCarteMarkers();
 }
 
 function promptCarteImage() {
     const url = prompt('Colle l\'URL directe de la carte GTA V (depuis imgbb, imgur...):', '');
     if (!url || !url.startsWith('http')) return;
     localStorage.setItem('cid_carte_image', url);
-    _carteMap.remove();
-    _carteMap = null;
+    _carteMap = null; window._cvMap = null;
+    document.getElementById('mainCarteContent').innerHTML = '';
     initCarte();
 }
 
@@ -8094,7 +8314,8 @@ function promptCarteImageUrl() {
         localStorage.removeItem('cid_carte_image_url');
     }
     // Réinitialiser la carte
-    if (_carteMap) { _carteMap.remove(); _carteMap = null; }
+    _carteMap = null; window._cvMap = null;
+    document.getElementById('mainCarteContent').innerHTML = '';
     initCarte();
 }
 
