@@ -16,6 +16,9 @@
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="CID Panel — Crime Investigation Division">
     <meta name="twitter:description" content="Plateforme officielle de gestion des dossiers, rapports et interrogatoires.">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <style>
 
         /* ===== DESIGN SYSTEM ===== */
@@ -1191,6 +1194,9 @@
                     <div class="nav-dropdown-item" data-tab="rapport" onclick="selectDossiersMenu('rapport')">📋 Rapport</div>
                 </div>
             </div>
+            <button class="nav-tab" id="tabCarte" onclick="switchMainTab('carte')">
+                🗺️ Carte
+            </button>
             <button class="nav-tab" id="tabOrgChart" onclick="switchMainTab('orgchart')">
                 👥 Organigramme
             </button>
@@ -1210,6 +1216,10 @@
         </div>
 
         <!-- TAB: ORGANIGRAMME -->
+        <div class="tab-content" id="tabContentCarte">
+            <div id="mainCarteContent" style="height:calc(100vh - 180px);min-height:500px;"></div>
+        </div>
+
         <div class="tab-content" id="tabContentOrgChart">
             <div id="orgChartTabContent"></div>
         </div>
@@ -4514,8 +4524,8 @@ async function saveMyProfile() {
 function switchMainTab(tab) {
     if (tab === 'documents' && getPermLevel() === 'procureur') return;
 
-    const tabIdMap = { dossiers:'tabDossiers', orgchart:'tabOrgChart', documents:'tabDocuments', deposition:'tabDeposition', rapport:'tabRapport' };
-    const contentIdMap = { dossiers:'tabContentDossiers', orgchart:'tabContentOrgChart', documents:'tabContentDocuments', deposition:'tabContentDeposition', rapport:'tabContentRapport' };
+    const tabIdMap = { dossiers:'tabDossiers', carte:'tabCarte', orgchart:'tabOrgChart', documents:'tabDocuments', deposition:'tabDeposition', rapport:'tabRapport' };
+    const contentIdMap = { dossiers:'tabContentDossiers', carte:'tabContentCarte', orgchart:'tabContentOrgChart', documents:'tabContentDocuments', deposition:'tabContentDeposition', rapport:'tabContentRapport' };
     Object.entries(tabIdMap).forEach(([k,id]) => {
         const el = document.getElementById(id);
         if (el) el.classList.toggle('active', k === tab);
@@ -4541,6 +4551,7 @@ function switchMainTab(tab) {
     if (tab === 'documents') renderDocumentsTab();
     if (tab === 'deposition') { currentDepositionId = null; renderMainDepositionTab(); }
     if (tab === 'rapport') { currentRapportId = null; renderMainRapportTab(); }
+    if (tab === 'carte') { initCarte(); }
     // Sauvegarder l'onglet actif pour le restaurer au refresh
     try { sessionStorage.setItem('cid_active_tab', tab); } catch(e) {}
 
@@ -7602,6 +7613,406 @@ function exportInterroPDF(id) {
     w.document.close();
     setTimeout(() => { w.print(); }, 600);
 }
+
+
+// ===== CARTE INTERACTIVE GTA V =====
+let _carteMap = null;
+let _cartePoints = [];
+let _carteZones = [];
+let _carteLoaded = false;
+let _carteMarkers = [];
+let _carteZoneLayers = [];
+let _activeCategory = 'all';
+let _drawingZone = false;
+let _zonePoints = [];
+let _tempPolyline = null;
+
+const POINT_TYPES = {
+    'recolte':    { label: 'Lieu de récolte',      icon: '🌿', color: '#4caf50' },
+    'cle':        { label: 'Lieu clé',             icon: '🔑', color: '#ffeb3b' },
+    'arme':       { label: 'Laboratoire d\'Arme',  icon: '🔫', color: '#f44336' },
+    'drogue':     { label: 'Laboratoire de Drogue',icon: '💊', color: '#9c27b0' },
+    'qg':         { label: 'QG',                   icon: '🏠', color: '#2196f3' },
+    'divers':     { label: 'Divers',               icon: '📍', color: '#ff9800' },
+};
+const ZONE_TYPES = {
+    'danger':     { label: 'Zone Dangereuse',  color: '#f44336' },
+    'peche':      { label: 'Zone de Pêche',   color: '#2196f3' },
+    'recherche':  { label: 'Zone de Recherche', color: '#4caf50' },
+};
+
+// Chargement depuis Supabase/localStorage
+async function loadCarteData() {
+    try {
+        const rows = await sbFetch('org_settings?key=eq.cid_carte&select=value');
+        if (rows && rows[0]) {
+            const data = JSON.parse(rows[0].value || '{}');
+            _cartePoints = data.points || [];
+            _carteZones = data.zones || [];
+            localStorage.setItem('cid_carte', rows[0].value);
+            return;
+        }
+    } catch(e) {}
+    try {
+        const local = JSON.parse(localStorage.getItem('cid_carte') || '{}');
+        _cartePoints = local.points || [];
+        _carteZones = local.zones || [];
+    } catch(e) {}
+}
+
+async function saveCarteData() {
+    const payload = JSON.stringify({ points: _cartePoints, zones: _carteZones });
+    localStorage.setItem('cid_carte', payload);
+    try {
+        await fetch(`${SUPABASE_URL}/rest/v1/org_settings?key=eq.cid_carte`, {
+            method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+        });
+        await fetch(`${SUPABASE_URL}/rest/v1/org_settings`, {
+            method: 'POST',
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+            body: JSON.stringify({ key: 'cid_carte', value: payload })
+        });
+    } catch(e) {}
+}
+
+async function initCarte() {
+    const container = document.getElementById('mainCarteContent');
+    if (!container) return;
+    if (_carteMap) { _carteMap.invalidateSize(); renderCarteUI(); return; }
+
+    await loadCarteData();
+
+    container.innerHTML = `
+    <div style="display:flex;height:100%;gap:0;">
+        <!-- Sidebar gauche -->
+        <div id="carteSidebar" style="width:240px;flex-shrink:0;background:#0a1628;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid rgba(201,162,39,0.2);">
+            <div style="padding:14px 16px;border-bottom:1px solid rgba(201,162,39,0.2);">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                    <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#0D2B5E,#1a4080);border:2px solid #C9A227;display:flex;align-items:center;justify-content:center;font-size:14px;">🔍</div>
+                    <div>
+                        <div style="color:#C9A227;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">SAHP · CID</div>
+                        <div style="color:white;font-size:13px;font-weight:700;">Investigation <span style="color:#C9A227;">Map</span></div>
+                    </div>
+                </div>
+                <input type="text" id="carteSearch" placeholder="🔍 Rechercher un lieu..." oninput="filterCartePoints(this.value)"
+                    style="width:100%;padding:7px 10px;background:rgba(255,255,255,0.08);border:1px solid rgba(201,162,39,0.2);border-radius:8px;color:white;font-size:12px;box-sizing:border-box;outline:none;">
+            </div>
+
+            <div style="padding:12px 14px;border-bottom:1px solid rgba(201,162,39,0.15);">
+                <div style="color:rgba(201,162,39,0.7);font-size:9px;font-weight:800;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;">Fond de carte</div>
+                <button onclick="setMapLayer('atlas')" id="btnAtlas" style="display:block;width:100%;text-align:left;padding:6px 10px;background:rgba(201,162,39,0.15);border:1px solid rgba(201,162,39,0.3);border-radius:6px;color:#C9A227;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:4px;">🗺 Atlas</button>
+                <button onclick="setMapLayer('route')" id="btnRoute" style="display:block;width:100%;text-align:left;padding:6px 10px;background:transparent;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:rgba(255,255,255,0.5);font-size:12px;font-weight:700;cursor:pointer;margin-bottom:4px;">🛣 Route</button>
+                <button onclick="setMapLayer('satellite')" id="btnSatellite" style="display:block;width:100%;text-align:left;padding:6px 10px;background:transparent;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:rgba(255,255,255,0.5);font-size:12px;font-weight:700;cursor:pointer;">🛰 Satellite</button>
+            </div>
+
+            <div style="padding:12px 14px;border-bottom:1px solid rgba(201,162,39,0.15);">
+                <div style="color:rgba(201,162,39,0.7);font-size:9px;font-weight:800;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;">Points</div>
+                ${Object.entries(POINT_TYPES).map(([k,v]) => `
+                <div onclick="toggleCarteCategory('${k}')" id="cat-${k}" style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;margin-bottom:2px;transition:background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background=''">
+                    <span style="width:10px;height:10px;border-radius:50%;background:${v.color};flex-shrink:0;display:inline-block;"></span>
+                    <span style="color:rgba(255,255,255,0.75);font-size:11px;flex:1;">${v.label}</span>
+                    <span id="count-${k}" style="color:rgba(201,162,39,0.6);font-size:10px;font-weight:700;">0</span>
+                </div>`).join('')}
+            </div>
+
+            <div style="padding:12px 14px;border-bottom:1px solid rgba(201,162,39,0.15);">
+                <div style="color:rgba(201,162,39,0.7);font-size:9px;font-weight:800;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;">Zones</div>
+                ${Object.entries(ZONE_TYPES).map(([k,v]) => `
+                <div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;margin-bottom:2px;">
+                    <span style="width:10px;height:10px;border-radius:2px;background:${v.color};opacity:0.7;flex-shrink:0;display:inline-block;"></span>
+                    <span style="color:rgba(255,255,255,0.75);font-size:11px;">${v.label}</span>
+                </div>`).join('')}
+            </div>
+
+            <div style="padding:12px 14px;flex:1;overflow-y:auto;" id="cartePointsList">
+            </div>
+
+            <div style="padding:12px 14px;border-top:1px solid rgba(201,162,39,0.2);">
+                <div style="color:rgba(255,255,255,0.4);font-size:9px;text-align:center;margin-bottom:6px;">
+                    <kbd style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:3px;font-size:9px;">Ctrl</kbd> + clic = ajouter un point<br>
+                    <kbd style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:3px;font-size:9px;">Alt</kbd> + clic = dessiner une zone
+                </div>
+                <div id="drawingStatus" style="display:none;background:rgba(201,162,39,0.15);border:1px solid rgba(201,162,39,0.3);padding:7px 10px;border-radius:8px;color:#C9A227;font-size:11px;font-weight:700;text-align:center;">
+                    ✏️ Mode zone actif — cliquez sur la carte<br>
+                    <button onclick="finishZone()" style="background:#C9A227;color:#0D2B5E;border:none;padding:4px 12px;border-radius:5px;cursor:pointer;font-size:10px;font-weight:800;margin-top:6px;">✅ Terminer</button>
+                    <button onclick="cancelZone()" style="background:rgba(255,255,255,0.1);color:white;border:none;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:10px;margin-left:4px;">✕</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Carte -->
+        <div style="flex:1;position:relative;">
+            <div id="gtaMap" style="width:100%;height:100%;background:#0a4a7a;"></div>
+            <div style="position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:500;">
+                <button onclick="_carteMap.zoomIn()" style="width:32px;height:32px;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;">+</button>
+                <button onclick="_carteMap.zoomOut()" style="width:32px;height:32px;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;">−</button>
+            </div>
+            <div id="carteUser" style="position:absolute;bottom:10px;right:10px;background:#0a1628;border:1px solid rgba(201,162,39,0.2);border-radius:8px;padding:6px 10px;color:rgba(255,255,255,0.5);font-size:10px;z-index:500;"></div>
+        </div>
+    </div>
+
+    <!-- Modal ajout point -->
+    <div id="carteModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;align-items:center;justify-content:center;">
+        <div style="background:#0f1628;border-radius:16px;padding:28px;width:340px;border:1px solid rgba(201,162,39,0.2);box-shadow:0 24px 60px rgba(0,0,0,0.5);">
+            <h3 style="color:#C9A227;font-size:16px;font-weight:800;margin-bottom:20px;">📍 Ajouter un point</h3>
+            <input type="hidden" id="carteLat"><input type="hidden" id="carteLng">
+            <div style="margin-bottom:12px;">
+                <label style="color:rgba(255,255,255,0.6);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px;">Nom du lieu</label>
+                <input type="text" id="cartePointNom" placeholder="Ex: Laboratoire Vespucci" style="width:100%;padding:10px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(201,162,39,0.2);border-radius:9px;color:white;font-size:14px;box-sizing:border-box;outline:none;">
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="color:rgba(255,255,255,0.6);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px;">Type</label>
+                <select id="cartePointType" style="width:100%;padding:10px 12px;background:#0a1628;border:1px solid rgba(201,162,39,0.2);border-radius:9px;color:white;font-size:13px;box-sizing:border-box;outline:none;">
+                    ${Object.entries(POINT_TYPES).map(([k,v]) => `<option value="${k}">${v.icon} ${v.label}</option>`).join('')}
+                </select>
+            </div>
+            <div style="margin-bottom:20px;">
+                <label style="color:rgba(255,255,255,0.6);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px;">Description</label>
+                <textarea id="cartePointDesc" placeholder="Informations supplémentaires..." style="width:100%;min-height:70px;padding:10px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(201,162,39,0.2);border-radius:9px;color:white;font-size:13px;box-sizing:border-box;outline:none;resize:none;font-family:inherit;"></textarea>
+            </div>
+            <div style="display:flex;gap:10px;">
+                <button onclick="confirmAddPoint()" style="flex:1;padding:11px;background:linear-gradient(135deg,#C9A227,#e0b830);color:#0D2B5E;border:none;border-radius:9px;cursor:pointer;font-weight:800;font-size:14px;">✅ Ajouter</button>
+                <button onclick="document.getElementById('carteModal').style.display='none'" style="padding:11px 16px;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.1);border-radius:9px;cursor:pointer;">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal zone -->
+    <div id="carteZoneModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;align-items:center;justify-content:center;">
+        <div style="background:#0f1628;border-radius:16px;padding:28px;width:320px;border:1px solid rgba(201,162,39,0.2);">
+            <h3 style="color:#C9A227;font-size:16px;font-weight:800;margin-bottom:20px;">🔲 Nommer la zone</h3>
+            <div style="margin-bottom:12px;">
+                <label style="color:rgba(255,255,255,0.6);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px;">Nom de la zone</label>
+                <input type="text" id="carteZoneNom" placeholder="Ex: Zone de deal" style="width:100%;padding:10px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(201,162,39,0.2);border-radius:9px;color:white;font-size:14px;box-sizing:border-box;outline:none;">
+            </div>
+            <div style="margin-bottom:20px;">
+                <label style="color:rgba(255,255,255,0.6);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px;">Type de zone</label>
+                <select id="carteZoneType" style="width:100%;padding:10px 12px;background:#0a1628;border:1px solid rgba(201,162,39,0.2);border-radius:9px;color:white;font-size:13px;box-sizing:border-box;outline:none;">
+                    ${Object.entries(ZONE_TYPES).map(([k,v]) => `<option value="${k}">${v.label}</option>`).join('')}
+                </select>
+            </div>
+            <div style="display:flex;gap:10px;">
+                <button onclick="confirmAddZone()" style="flex:1;padding:11px;background:linear-gradient(135deg,#C9A227,#e0b830);color:#0D2B5E;border:none;border-radius:9px;cursor:pointer;font-weight:800;">✅ Créer</button>
+                <button onclick="document.getElementById('carteZoneModal').style.display='none'" style="padding:11px 16px;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.1);border-radius:9px;cursor:pointer;">Annuler</button>
+            </div>
+        </div>
+    </div>`;
+
+    // Init Leaflet
+    setTimeout(() => _initLeafletMap(), 100);
+}
+
+let _currentLayer = 'atlas';
+let _tileLayer = null;
+
+function _initLeafletMap() {
+    if (!window.L) return;
+
+    // Bounds de la carte GTA V (image custom)
+    const bounds = [[-256, 0], [0, 256]];
+    _carteMap = L.map('gtaMap', {
+        crs: L.CRS.Simple,
+        minZoom: -2,
+        maxZoom: 3,
+        zoomControl: false,
+        attributionControl: false,
+    });
+
+    // Tuiles GTA V depuis cdnjs
+    _tileLayer = L.imageOverlay(
+        'https://raw.githubusercontent.com/nickytonline/gtav-map/master/map/mapHD.jpg',
+        bounds
+    ).addTo(_carteMap);
+
+    _carteMap.fitBounds(bounds);
+
+    // Événements
+    _carteMap.on('click', (e) => {
+        if (e.originalEvent.ctrlKey || e.originalEvent.metaKey) {
+            document.getElementById('carteLat').value = e.latlng.lat;
+            document.getElementById('carteLng').value = e.latlng.lng;
+            document.getElementById('cartePointNom').value = '';
+            document.getElementById('cartePointDesc').value = '';
+            const m = document.getElementById('carteModal');
+            m.style.display = 'flex';
+            setTimeout(() => document.getElementById('cartePointNom').focus(), 100);
+        } else if (e.originalEvent.altKey) {
+            if (!_drawingZone) {
+                _drawingZone = true;
+                _zonePoints = [];
+                document.getElementById('drawingStatus').style.display = 'block';
+            }
+            _zonePoints.push([e.latlng.lat, e.latlng.lng]);
+            if (_tempPolyline) _carteMap.removeLayer(_tempPolyline);
+            if (_zonePoints.length > 1) {
+                _tempPolyline = L.polyline([..._zonePoints, _zonePoints[0]], {
+                    color: '#C9A227', dashArray: '5,5', weight: 2
+                }).addTo(_carteMap);
+            }
+        }
+        const u = document.getElementById('carteUser');
+        if (u) u.textContent = `${e.latlng.lat.toFixed(1)}, ${e.latlng.lng.toFixed(1)}`;
+    });
+
+    renderCarteMarkers();
+    renderCartePointsList();
+}
+
+function setMapLayer(type) {
+    _currentLayer = type;
+    ['atlas','route','satellite'].forEach(t => {
+        const btn = document.getElementById('btn' + t.charAt(0).toUpperCase() + t.slice(1));
+        if (btn) {
+            btn.style.background = t === type ? 'rgba(201,162,39,0.15)' : 'transparent';
+            btn.style.borderColor = t === type ? 'rgba(201,162,39,0.3)' : 'rgba(255,255,255,0.1)';
+            btn.style.color = t === type ? '#C9A227' : 'rgba(255,255,255,0.5)';
+        }
+    });
+}
+
+function confirmAddPoint() {
+    const lat = parseFloat(document.getElementById('carteLat').value);
+    const lng = parseFloat(document.getElementById('carteLng').value);
+    const nom = document.getElementById('cartePointNom').value.trim();
+    const type = document.getElementById('cartePointType').value;
+    const desc = document.getElementById('cartePointDesc').value.trim();
+    if (!nom) { alert('Entrez un nom'); return; }
+    const point = { id: Date.now().toString(), lat, lng, nom, type, desc, by: currentUser?.username || '', at: new Date().toLocaleDateString('fr-FR') };
+    _cartePoints.push(point);
+    saveCarteData();
+    document.getElementById('carteModal').style.display = 'none';
+    renderCarteMarkers();
+    renderCartePointsList();
+}
+
+function finishZone() {
+    if (_zonePoints.length < 3) { alert('Au moins 3 points requis'); return; }
+    document.getElementById('carteZoneModal').style.display = 'flex';
+}
+
+function cancelZone() {
+    _drawingZone = false; _zonePoints = [];
+    if (_tempPolyline) { _carteMap.removeLayer(_tempPolyline); _tempPolyline = null; }
+    document.getElementById('drawingStatus').style.display = 'none';
+}
+
+function confirmAddZone() {
+    const nom = document.getElementById('carteZoneNom').value.trim();
+    const type = document.getElementById('carteZoneType').value;
+    if (!nom) { alert('Entrez un nom'); return; }
+    const zone = { id: Date.now().toString(), points: [..._zonePoints], nom, type, by: currentUser?.username || '', at: new Date().toLocaleDateString('fr-FR') };
+    _carteZones.push(zone);
+    saveCarteData();
+    document.getElementById('carteZoneModal').style.display = 'none';
+    cancelZone();
+    renderCarteMarkers();
+}
+
+function renderCarteMarkers() {
+    if (!_carteMap) return;
+    _carteMarkers.forEach(m => _carteMap.removeLayer(m));
+    _carteMarkers = [];
+    _carteZoneLayers.forEach(z => _carteMap.removeLayer(z));
+    _carteZoneLayers = [];
+
+    // Zones
+    _carteZones.forEach(zone => {
+        const zt = ZONE_TYPES[zone.type] || ZONE_TYPES.danger;
+        const poly = L.polygon(zone.points, {
+            color: zt.color, fillColor: zt.color, fillOpacity: 0.2, weight: 2, dashArray: '6,4'
+        }).addTo(_carteMap);
+        poly.bindPopup(`<b style="color:${zt.color}">${zone.nom}</b><br><small>${zt.label} · @${zone.by}</small>
+            <br><button onclick="deleteCarteZone('${zone.id}')" style="margin-top:6px;background:#d32f2f;color:white;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px;">🗑 Supprimer</button>`);
+        _carteZoneLayers.push(poly);
+    });
+
+    // Points
+    _cartePoints.forEach(pt => {
+        const t = POINT_TYPES[pt.type] || POINT_TYPES.divers;
+        const icon = L.divIcon({
+            className: '',
+            html: `<div style="width:28px;height:28px;border-radius:50%;background:${t.color};border:2px solid white;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,0.4);cursor:pointer;">${t.icon}</div>`,
+            iconSize: [28, 28],
+            iconAnchor: [14, 14],
+        });
+        const m = L.marker([pt.lat, pt.lng], { icon }).addTo(_carteMap);
+        m.bindPopup(`<div style="min-width:160px;"><b style="color:${t.color};font-size:14px;">${pt.nom}</b><br><small style="color:#888;">${t.label} · @${pt.by} · ${pt.at}</small>${pt.desc ? `<p style="margin:6px 0 4px;font-size:12px;">${pt.desc}</p>` : ''}
+            <br><button onclick="deleteCartePoint('${pt.id}')" style="margin-top:4px;background:#d32f2f;color:white;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px;">🗑 Supprimer</button></div>`);
+        _carteMarkers.push(m);
+    });
+
+    // Compteurs
+    Object.keys(POINT_TYPES).forEach(k => {
+        const el = document.getElementById('count-' + k);
+        if (el) el.textContent = _cartePoints.filter(p => p.type === k).length;
+    });
+}
+
+function renderCartePointsList(filter = '') {
+    const list = document.getElementById('cartePointsList');
+    if (!list) return;
+    const pts = _cartePoints.filter(p => !filter || p.nom.toLowerCase().includes(filter.toLowerCase()) || (p.desc||'').toLowerCase().includes(filter.toLowerCase()));
+    if (pts.length === 0) {
+        list.innerHTML = '<div style="color:rgba(255,255,255,0.3);font-size:11px;text-align:center;padding:16px;">Aucun point — Ctrl+clic pour en ajouter</div>';
+        return;
+    }
+    list.innerHTML = pts.map(pt => {
+        const t = POINT_TYPES[pt.type] || POINT_TYPES.divers;
+        return `<div onclick="goToPoint('${pt.id}')" style="display:flex;align-items:center;gap:8px;padding:7px 6px;border-radius:7px;cursor:pointer;margin-bottom:2px;transition:background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background=''">
+            <span style="font-size:14px;">${t.icon}</span>
+            <div style="flex:1;min-width:0;">
+                <div style="color:white;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${pt.nom}</div>
+                <div style="color:rgba(255,255,255,0.4);font-size:10px;">${t.label}</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function filterCartePoints(q) {
+    renderCartePointsList(q);
+}
+
+function goToPoint(id) {
+    const pt = _cartePoints.find(p => p.id === id);
+    if (!pt || !_carteMap) return;
+    _carteMap.setView([pt.lat, pt.lng], 1);
+    const m = _carteMarkers[_cartePoints.findIndex(p => p.id === id)];
+    if (m) m.openPopup();
+}
+
+function deleteCartePoint(id) {
+    if (!confirm('Supprimer ce point ?')) return;
+    _cartePoints = _cartePoints.filter(p => p.id !== id);
+    saveCarteData();
+    renderCarteMarkers();
+    renderCartePointsList();
+}
+
+function deleteCarteZone(id) {
+    if (!confirm('Supprimer cette zone ?')) return;
+    _carteZones = _carteZones.filter(z => z.id !== id);
+    saveCarteData();
+    renderCarteMarkers();
+}
+
+function toggleCarteCategory(cat) {
+    // Toggle visibilité des points par catégorie
+    _carteMarkers.forEach((m, i) => {
+        const pt = _cartePoints[i];
+        if (!pt) return;
+        if (cat === 'all' || pt.type === cat) {
+            m.addTo(_carteMap);
+        } else {
+            _carteMap.removeLayer(m);
+        }
+    });
+}
+
+function renderCarteUI() {
+    renderCarteMarkers();
+    renderCartePointsList();
+}
+
 
 </script>
 
