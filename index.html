@@ -4555,7 +4555,7 @@ function switchMainTab(tab) {
     if (tab === 'documents') renderDocumentsTab();
     if (tab === 'deposition') { currentDepositionId = null; renderMainDepositionTab(); }
     if (tab === 'rapport') { currentRapportId = null; renderMainRapportTab(); }
-    if (tab === 'carte') { initCarte(); setTimeout(() => { if(_carteMap) { _carteMap.invalidateSize(); _carteMap.fitBounds([[0,0],[1291,1375]],{padding:[0,0]}); } }, 150); }
+    if (tab === 'carte') { initCarte(); setTimeout(() => { if(_carteMap) { _carteMap.invalidateSize(true); _carteMap.fitBounds([[0,0],[1291,1375]],{padding:[10,10]}); } }, 300); }
     // Sauvegarder l'onglet actif pour le restaurer au refresh
     try { sessionStorage.setItem('cid_active_tab', tab); } catch(e) {}
 
@@ -7682,7 +7682,12 @@ async function saveCarteData() {
 async function initCarte() {
     const container = document.getElementById('mainCarteContent');
     if (!container) return;
-    if (_carteMap) { _carteMap.invalidateSize(); renderCarteUI(); return; }
+    // Si déjà initialisé
+    if (container.querySelector('#carteWrapper')) { 
+        if (_carteMap) { _carteMap.invalidateSize(true); }
+        renderCarteUI(); 
+        return; 
+    }
 
     await loadCarteData();
 
@@ -7732,6 +7737,7 @@ async function initCarte() {
             </div>
 
             <div style="padding:12px 14px;border-top:1px solid rgba(201,162,39,0.2);">
+                <button onclick="promptCarteImageUrl()" style="width:100%;padding:7px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.3);border-radius:8px;color:#C9A227;font-size:11px;font-weight:700;cursor:pointer;margin-bottom:8px;">🖼️ Changer l'image de la carte</button>
                 <div style="color:rgba(255,255,255,0.4);font-size:9px;text-align:center;margin-bottom:6px;">
                     <kbd style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:3px;font-size:9px;">Ctrl</kbd> + clic = ajouter un point<br>
                     <kbd style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:3px;font-size:9px;">Alt</kbd> + clic = dessiner une zone
@@ -7812,30 +7818,36 @@ let _tileLayer = null;
 function _initLeafletMap() {
     if (!window.L) return;
 
-    // Carte GTA V avec tuiles gta5-map.com (CRS standard)
+    // Carte GTA V CRS.Simple
     _carteMap = L.map('gtaMap', {
-        center: [0, 0],
-        zoom: 3,
-        minZoom: 1,
-        maxZoom: 7,
+        crs: L.CRS.Simple,
+        minZoom: -4,
+        maxZoom: 6,
         zoomControl: false,
         attributionControl: false,
     });
-    const bounds = [[-145, -200], [0, 0]];
+    const bounds = [[-145, -200], [0, 0]]; // inutilisé
 
     // Tuiles GTA V depuis cdnjs
     document.getElementById('gtaMap').style.background = '#1a5c8a';
 
-    // Image carte GTA V — dimensions réelles 1375x1291px
+    // Image carte GTA V — centrée et ajustée
     const mapBounds = [[0, 0], [1291, 1375]];
-    _tileLayer = L.imageOverlay(window._gtaMapB64, mapBounds, { opacity: 1 }).addTo(_carteMap);
-    // Forcer la carte à remplir le container dès l'ouverture
-    setTimeout(() => {
-        _carteMap.invalidateSize();
-        _carteMap.fitBounds(mapBounds, { padding: [0, 0] });
-    }, 50);
-    _carteMap.setMinZoom(-3);
+    const mapCenter = [645, 687]; // centre de l'image
+    // Charger l'image : priorité URL custom, sinon base64 intégré
+    const _customUrl = localStorage.getItem('cid_carte_image_url');
+    const _mapSrc = _customUrl || window._gtaMapB64;
+    
+    _tileLayer = L.imageOverlay(_mapSrc, mapBounds, { 
+        opacity: 1,
+        crossOrigin: _customUrl ? 'anonymous' : null
+    }).addTo(_carteMap);
+    _carteMap.setMinZoom(-4);
     _carteMap.setMaxZoom(6);
+    setTimeout(() => {
+        _carteMap.invalidateSize(true);
+        _carteMap.fitBounds(mapBounds, { padding: [10, 10] });
+    }, 200);
     window._carteTileUrls = {};
 
     _carteMap.setView([0, 0], 4);
@@ -8035,6 +8047,20 @@ function promptCarteImage() {
     localStorage.setItem('cid_carte_image', url);
     _carteMap.remove();
     _carteMap = null;
+    initCarte();
+}
+
+function promptCarteImageUrl() {
+    const current = localStorage.getItem('cid_carte_image_url') || '';
+    const url = prompt('Colle l\'URL directe de ta carte GTA V haute résolution (imgbb, imgur...):\n\nEx: https://i.ibb.co/XXXX/map.jpg', current);
+    if (url === null) return;
+    if (url.trim()) {
+        localStorage.setItem('cid_carte_image_url', url.trim());
+    } else {
+        localStorage.removeItem('cid_carte_image_url');
+    }
+    // Réinitialiser la carte
+    if (_carteMap) { _carteMap.remove(); _carteMap = null; }
     initCarte();
 }
 
