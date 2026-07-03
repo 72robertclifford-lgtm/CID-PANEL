@@ -7772,14 +7772,9 @@ async function initCarte() {
             <div style="padding:12px 14px;flex:1;overflow-y:auto;" id="cartePointsList"></div>
 
             <div style="padding:12px 14px;border-top:1px solid rgba(201,162,39,0.2);">
-                <div style="color:rgba(255,255,255,0.4);font-size:9px;text-align:center;margin-bottom:6px;">
+                <div style="color:rgba(255,255,255,0.4);font-size:9px;text-align:center;">
                     <kbd style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:3px;font-size:9px;">Ctrl</kbd> + clic = ajouter un point<br>
                     <kbd style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:3px;font-size:9px;">Alt</kbd> + clic = dessiner une zone
-                </div>
-                <div id="drawingStatus" style="display:none;background:rgba(201,162,39,0.15);border:1px solid rgba(201,162,39,0.3);padding:7px 10px;border-radius:8px;color:#C9A227;font-size:11px;font-weight:700;text-align:center;">
-                    ✏️ Mode zone actif<br>
-                    <button onclick="finishZone()" style="background:#C9A227;color:#0D2B5E;border:none;padding:4px 12px;border-radius:5px;cursor:pointer;font-size:10px;font-weight:800;margin-top:6px;">✅ Terminer</button>
-                    <button onclick="cancelZone()" style="background:rgba(255,255,255,0.1);color:white;border:none;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:10px;margin-left:4px;">✕</button>
                 </div>
             </div>
         </div>
@@ -7790,6 +7785,14 @@ async function initCarte() {
             <div style="position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:500;">
                 <button onclick="if(_carteMap)_carteMap.zoomIn()" style="width:32px;height:32px;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;">+</button>
                 <button onclick="if(_carteMap)_carteMap.zoomOut()" style="width:32px;height:32px;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;">−</button>
+            </div>
+            <!-- Indicateur mode zone : flottant sur la carte, bien visible -->
+            <div id="drawingStatus" style="display:none;position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:600;background:#0f1628;border:2px solid #C9A227;padding:12px 20px;border-radius:12px;color:#C9A227;font-size:14px;font-weight:800;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,0.5);">
+                ✏️ Mode zone actif
+                <div style="margin-top:8px;display:flex;gap:8px;justify-content:center;">
+                    <button onclick="finishZone()" style="background:#C9A227;color:#0D2B5E;border:none;padding:7px 16px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:800;">✅ Terminer</button>
+                    <button onclick="cancelZone()" style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);padding:7px 14px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:700;">✕ Annuler</button>
+                </div>
             </div>
         </div>
     </div>
@@ -7843,7 +7846,10 @@ function _initLeafletMap() {
     _carteMap = L.map('gtaMap', {
         crs: L.CRS.Simple,
         minZoom: -4,
-        maxZoom: 6,
+        maxZoom: 9,
+        zoomSnap: 0.25,
+        zoomDelta: 0.5,
+        wheelPxPerZoomLevel: 90,
         zoomControl: false,
         attributionControl: false,
         fadeAnimation: false,
@@ -7874,7 +7880,7 @@ function _initLeafletMap() {
         if (imgEl) { imgEl.style.imageRendering = 'auto'; imgEl.setAttribute('draggable', 'false'); }
     }
     _carteMap.setMinZoom(-4);
-    _carteMap.setMaxZoom(6);
+    _carteMap.setMaxZoom(9);
     setTimeout(() => {
         _carteMap.invalidateSize(true);
         _carteMap.fitBounds(mapBounds, { padding: [10, 10] });
