@@ -6451,14 +6451,15 @@ function printCidDeposition(id) {
 function copyInterroLink(id) {
     const baseUrl = window.location.origin + window.location.pathname.replace(/\/$/, '');
     const dep = cidDepositions.find(d => d.id === id);
-    const link = `${baseUrl}?interrogatoire=${id}`;
+    const nomSlug = dep ? dep.name.replace(/[^a-zA-Z0-9À-ÿ\s-]/g,'').trim().replace(/\s+/g,'-').substring(0,40) : '';
+    const link = `${baseUrl}?interrogatoire=${id}${nomSlug ? '&nom='+encodeURIComponent(nomSlug) : ''}`;
     navigator.clipboard.writeText(link).then(() => {
         const msg = document.getElementById('interroSaveMsg');
         if (msg) { msg.textContent = '🔗 Lien copié !'; msg.style.display='block'; setTimeout(()=>{if(msg)msg.style.display='none';},3000); }
     }).catch(() => { prompt('Copie ce lien :', link); });
     if (dep) {
         const owner = dep.username ? `@${dep.username}` : '';
-        updateOgMeta(`${dep.name} — CID`, `Interrogatoire${owner ? ' rédigé par '+owner : ''} · Crime Investigation Division`);
+        updateOgMeta(`${dep.name} — CID`, `📋 Interrogatoire${owner ? ' • '+owner : ''} · Crime Investigation Division · Cliquez pour consulter`);
     }
 }
 
@@ -7122,7 +7123,8 @@ function printRapport(id) {
 function copyRapportLink(id) {
     const base = window.location.origin + window.location.pathname.replace(/\/$/, '');
     const rap = cidRapports.find(r => r.id === id);
-    const link = `${base}?rapport=${id}`;
+    const nomSlugR = rap ? (rap.form && rap.form.objet ? rap.form.objet : rap.name).replace(/[^a-zA-Z0-9À-ÿ\s-]/g,'').trim().replace(/\s+/g,'-').substring(0,40) : '';
+    const link = `${base}?rapport=${id}${nomSlugR ? '&nom='+encodeURIComponent(nomSlugR) : ''}`;
     navigator.clipboard.writeText(link).then(() => {
         const msg = document.getElementById('rapSaveMsg-' + id);
         if (msg) { msg.textContent = '🔗 Lien copié !'; msg.style.display='block'; setTimeout(()=>{if(msg)msg.style.display='none';},3000); }
@@ -7130,7 +7132,7 @@ function copyRapportLink(id) {
     if (rap) {
         const owner = rap.username ? `@${rap.username}` : '';
         const objet = (rap.form && rap.form.objet) ? rap.form.objet : rap.name;
-        updateOgMeta(`${objet} — CID`, `Rapport${owner ? ' rédigé par '+owner : ''} · Crime Investigation Division`);
+        updateOgMeta(`${objet} — CID`, `📋 Rapport${owner ? ' • '+owner : ''} · Crime Investigation Division · Cliquez pour consulter`);
     }
 }
 
