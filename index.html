@@ -2363,6 +2363,10 @@ function renderActs(){
                 <div class="dropzone-text">📸 Glissez vos photos ici</div><div class="dropzone-sub">ou cliquez</div>
                 <input type="file" class="file-input" accept="image/*" multiple onchange="handleActFile(${i},this)">
             </div>
+            <div style="display:flex;gap:8px;margin-top:6px;">
+                <input type="text" id="act-url-${i}" placeholder="🔗 Coller un lien image (imgbb, imgur...)" style="flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;background:var(--input-bg);color:var(--text);" onkeydown="if(event.key==='Enter'){addActPhotoUrl(${i},this.value);this.value='';}">
+                <button onclick="addActPhotoUrl(${i},document.getElementById('act-url-${i}').value);document.getElementById('act-url-${i}').value=''" style="padding:7px 12px;background:rgba(13,43,94,0.3);color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:7px;cursor:pointer;font-size:12px;font-weight:700;">+ Lien</button>
+            </div>
             <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;">
                 ${(a.photos||[]).map((ph,j)=>`<div style="position:relative;display:inline-block;"><img src="${ph}" onclick="openPhoto('${ph}')" style="width:100px;height:80px;object-fit:cover;border-radius:4px;cursor:pointer;border:1px solid var(--border);"><button onclick="acts[${i}].photos.splice(${j},1);renderActs();saveData()" style="position:absolute;top:-6px;right:-6px;background:#d32f2f;color:white;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:11px;">✕</button></div>`).join('')}
             </div>
@@ -6291,12 +6295,18 @@ function renderDepositionEditor(container) {
                         </div>
                         ${canWrite?`
                         <div style="position:relative;">
-                            <button onclick="toggleDetDropdown('${id}')" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--input-bg);color:var(--text);text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
-                                <span>+ Ajouter des agents...</span><span>▾</span>
+                            <button onclick="toggleDetDropdown('${id}')" style="width:100%;padding:10px 14px;border:1px solid rgba(201,162,39,0.3);border-radius:10px;font-size:13px;font-weight:700;background:rgba(13,43,94,0.15);color:#C9A227;text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:all 0.15s;">
+                                <span style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">👤</span> Sélectionner des agents...</span>
+                                <span id="det-arrow-${id}" style="font-size:12px;transition:transform 0.2s;">▾</span>
                             </button>
-                            <div id="det-dropdown-${id}" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--bg2);border:1px solid rgba(201,162,39,0.25);border-radius:10px;max-height:220px;overflow-y:auto;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,0.25);padding:6px;"></div>
+                            <div id="det-dropdown-${id}" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--bg2);border:1px solid rgba(201,162,39,0.2);border-radius:12px;max-height:260px;overflow-y:auto;z-index:200;box-shadow:0 12px 32px rgba(0,0,0,0.3);padding:8px;">
+                                <div style="padding:8px 10px 10px;border-bottom:1px solid rgba(201,162,39,0.1);margin-bottom:6px;">
+                                    <input type="text" id="det-search-${id}" placeholder="🔍 Rechercher..." oninput="filterDetDropdown('${id}',this.value)" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;background:var(--input-bg);color:var(--text);box-sizing:border-box;">
+                                </div>
+                                <div id="det-list-${id}"></div>
+                            </div>
                         </div>
-                        <button onclick="depConfirmDetectives('${id}')" style="width:100%;margin-top:8px;padding:9px;background:linear-gradient(135deg,#C9A227,#e0b830);color:#0D2B5E;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:800;">✅ Confirmer la sélection</button>
+                        <button onclick="depConfirmDetectives('${id}')" style="width:100%;margin-top:8px;padding:10px;background:linear-gradient(135deg,#C9A227,#e0b830);color:#0D2B5E;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:900;letter-spacing:0.3px;box-shadow:0 3px 10px rgba(201,162,39,0.25);">✅ Confirmer la sélection</button>
                         `:''}
                     </div>
                     <div><label style="font-size:11px;font-weight:700;color:var(--text3);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.8px;">Dépositaire</label><input type="text" value="${depEsc(f.depositaire)}" ${dis} oninput="depField('${id}','depositaire',this.value)" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--input-bg);color:var(--text);"></div>
@@ -6440,11 +6450,16 @@ function printCidDeposition(id) {
 }
 function copyInterroLink(id) {
     const baseUrl = window.location.origin + window.location.pathname.replace(/\/$/, '');
+    const dep = cidDepositions.find(d => d.id === id);
     const link = `${baseUrl}?interrogatoire=${id}`;
     navigator.clipboard.writeText(link).then(() => {
         const msg = document.getElementById('interroSaveMsg');
-        if (msg) { msg.textContent = '🔗 Lien copié ! Envoie-le à un membre connecté.'; msg.style.display = 'block'; setTimeout(() => { if(msg) msg.style.display='none'; }, 3000); }
+        if (msg) { msg.textContent = '🔗 Lien copié !'; msg.style.display='block'; setTimeout(()=>{if(msg)msg.style.display='none';},3000); }
     }).catch(() => { prompt('Copie ce lien :', link); });
+    if (dep) {
+        const owner = dep.username ? `@${dep.username}` : '';
+        updateOgMeta(`${dep.name} — CID`, `Interrogatoire${owner ? ' rédigé par '+owner : ''} · Crime Investigation Division`);
+    }
 }
 
 // ===== POLLING TEMPS RÉEL — INTERROGATOIRES =====
@@ -6575,28 +6590,55 @@ async function depRemoveDetective(id, name) {
     setTimeout(() => populateDetectiveSelect(id), 80);
 }
 
+function _detItemHtml(a, current) {
+    const label = (a.grade||'') + ' | ' + (a.first_name||'') + ' ' + (a.last_name||'');
+    const checked = current.includes(label) ? 'checked' : '';
+    const initials = [(a.first_name||'?')[0], (a.last_name||'?')[0]].join('').toUpperCase();
+    const gradeColors = {
+        'commanding': '#e74c3c', 'supervisor cid': '#9b59b6',
+        'master investigator': '#C9A227', 'sénior détective': '#3498db',
+        'senior detective': '#3498db', 'détective': '#2ecc71',
+        'detective': '#2ecc71'
+    };
+    const gradeColor = gradeColors[(a.grade||'').toLowerCase()] || '#aaa';
+    return `<label data-label="${label}" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer;transition:background 0.12s;margin-bottom:2px;" onmouseover="this.style.background='rgba(201,162,39,0.07)'" onmouseout="this.style.background=''">
+        <input type="checkbox" value="${label}" ${checked} style="width:16px;height:16px;accent-color:#C9A227;cursor:pointer;flex-shrink:0;">
+        <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#0D2B5E,#1a4080);border:2px solid ${gradeColor};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:${gradeColor};flex-shrink:0;">${initials}</div>
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:10px;font-weight:700;color:${gradeColor};text-transform:uppercase;letter-spacing:0.5px;">${a.grade||''}</div>
+            <div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${(a.first_name||'')} ${(a.last_name||'')}</div>
+        </div>
+    </label>`;
+}
+
 async function populateDetectiveSelect(id) {
-    const dd = document.getElementById('det-dropdown-' + id);
-    if (!dd) return;
     if (!_editorAccountsCache.length) await loadEditorAccounts();
     const dep = cidDepositions.find(d => d.id === id);
     const current = dep && dep.form.detective ? dep.form.detective.split('\n').filter(d => d.trim()) : [];
-    dd.innerHTML = _editorAccountsCache.map(a => {
-        const label = (a.grade||'') + ' | ' + (a.first_name||'') + ' ' + (a.last_name||'');
-        const checked = current.includes(label) ? 'checked' : '';
-        return `<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;cursor:pointer;font-size:13px;color:var(--text);transition:background 0.1s;" onmouseover="this.style.background='rgba(201,162,39,0.08)'" onmouseout="this.style.background=''">
-            <input type="checkbox" value="${label}" ${checked} style="width:15px;height:15px;accent-color:#C9A227;cursor:pointer;">
-            <span>${label}</span>
-        </label>`;
-    }).join('');
+    const list = document.getElementById('det-list-' + id);
+    if (list) list.innerHTML = _editorAccountsCache.map(a => _detItemHtml(a, current)).join('');
+}
+
+function filterDetDropdown(id, query) {
+    const list = document.getElementById('det-list-' + id);
+    if (!list) return;
+    const q = query.toLowerCase();
+    list.querySelectorAll('label[data-label]').forEach(el => {
+        el.style.display = el.dataset.label.toLowerCase().includes(q) ? '' : 'none';
+    });
 }
 
 function toggleDetDropdown(id) {
     const dd = document.getElementById('det-dropdown-' + id);
+    const arrow = document.getElementById('det-arrow-' + id);
     if (!dd) return;
     const isOpen = dd.style.display !== 'none';
     dd.style.display = isOpen ? 'none' : 'block';
-    if (!isOpen) populateDetectiveSelect(id);
+    if (arrow) arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
+    if (!isOpen) {
+        populateDetectiveSelect(id);
+        setTimeout(() => { const s = document.getElementById('det-search-'+id); if(s) { s.value=''; s.focus(); } }, 80);
+    }
 }
 
 async function depConfirmDetectives(id) {
@@ -6604,7 +6646,8 @@ async function depConfirmDetectives(id) {
     if (!dd) return;
     const dep = cidDepositions.find(d => d.id === id);
     if (!dep) return;
-    const checked = [...dd.querySelectorAll('input[type=checkbox]:checked')].map(cb => cb.value);
+    const list = document.getElementById('det-list-' + id);
+    const checked = [...(list||dd).querySelectorAll('input[type=checkbox]:checked')].map(cb => cb.value);
     dep.form.detective = checked.join('\n');
     dep.modified_at = new Date().toLocaleDateString('fr-FR');
     dd.style.display = 'none';
@@ -6617,6 +6660,38 @@ async function depConfirmDetectives(id) {
         });
         populateDetectiveSelect(id);
     }, 80);
+}
+
+// ===== AJOUT PHOTO PAR URL =====
+async function rapAddPhotoUrl(id, bi, url) {
+    url = url.trim();
+    if (!url || !url.startsWith('http')) { alert('URL invalide — collez un lien commençant par http'); return; }
+    const rap = cidRapports.find(r => r.id === id);
+    if (!rap) return;
+    const blocs = rapGetBlocs(rap);
+    if (!blocs[bi].photos) blocs[bi].photos = [];
+    blocs[bi].photos.push(url);
+    rap.modified_at = new Date().toLocaleDateString('fr-FR');
+    await saveCidRapports();
+    renderMainRapportTab();
+}
+
+function addInterroPhotoUrl(i, url) {
+    url = url.trim();
+    if (!url || !url.startsWith('http')) { alert('URL invalide'); return; }
+    if (!interrogations[i].photos) interrogations[i].photos = [];
+    interrogations[i].photos.push(url);
+    renderInterrogations();
+    saveData();
+}
+
+function addActPhotoUrl(i, url) {
+    url = url.trim();
+    if (!url || !url.startsWith('http')) { alert('URL invalide'); return; }
+    if (!acts[i].photos) acts[i].photos = [];
+    acts[i].photos.push(url);
+    renderAgissements();
+    saveData();
 }
 
 // ===== SAUVEGARDE INTERROGATOIRE =====
@@ -6968,10 +7043,14 @@ function renderRapportEditor(container) {
                     <textarea ${dis} oninput="rapBlocField('${id}',${bi},'texte',this.value);rapMarkField('${id}','bloc_texte_'+${bi});this.style.height='auto';this.style.height=this.scrollHeight+'px'" placeholder="Décrivez les faits en détail..." style="width:100%;min-height:120px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:15px;font-weight:600;background:var(--input-bg);color:var(--text);resize:none;line-height:1.8;margin-bottom:12px;overflow:hidden;">${rapEsc(bloc.texte)}</textarea>
                     ${rapMetaLabel(rap,'bloc_texte_'+bi)}
                     ${canWrite ? `
-                    <div class="dropzone" ondrop="rapDropPhoto('${id}',${bi},event)" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" onclick="this.querySelector('input').click()" style="margin-bottom:10px;">
+                    <div class="dropzone" ondrop="rapDropPhoto('${id}',${bi},event)" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" onclick="this.querySelector('input').click()" style="margin-bottom:8px;">
                         <div class="dropzone-text">📸 Glissez vos photos ici</div>
                         <div class="dropzone-sub">ou cliquez — uploadées sur imgbb</div>
                         <input type="file" class="file-input" accept="image/*" multiple onchange="rapAddPhoto('${id}',${bi},this)">
+                    </div>
+                    <div style="display:flex;gap:8px;margin-bottom:10px;">
+                        <input type="text" id="rap-url-${id}-${bi}" placeholder="🔗 Coller un lien image (imgbb, imgur...)" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--input-bg);color:var(--text);" onkeydown="if(event.key==='Enter'){rapAddPhotoUrl('${id}',${bi},this.value);this.value='';}">
+                        <button onclick="rapAddPhotoUrl('${id}',${bi},document.getElementById('rap-url-${id}-${bi}').value);document.getElementById('rap-url-${id}-${bi}').value=''" style="padding:8px 14px;background:linear-gradient(135deg,#0D2B5E,#1a4080);color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;white-space:nowrap;">+ Ajouter</button>
                     </div>` : ''}
                     ${(bloc.photos||[]).length ? `
                     <div style="display:flex;flex-wrap:wrap;gap:10px;">
@@ -7042,11 +7121,17 @@ function printRapport(id) {
 
 function copyRapportLink(id) {
     const base = window.location.origin + window.location.pathname.replace(/\/$/, '');
+    const rap = cidRapports.find(r => r.id === id);
     const link = `${base}?rapport=${id}`;
     navigator.clipboard.writeText(link).then(() => {
         const msg = document.getElementById('rapSaveMsg-' + id);
-        if (msg) { msg.textContent = '🔗 Lien copié ! Accessible à tous les membres connectés.'; msg.style.display='block'; setTimeout(()=>{if(msg)msg.style.display='none';},3000); }
+        if (msg) { msg.textContent = '🔗 Lien copié !'; msg.style.display='block'; setTimeout(()=>{if(msg)msg.style.display='none';},3000); }
     }).catch(() => prompt('Copie ce lien :', link));
+    if (rap) {
+        const owner = rap.username ? `@${rap.username}` : '';
+        const objet = (rap.form && rap.form.objet) ? rap.form.objet : rap.name;
+        updateOgMeta(`${objet} — CID`, `Rapport${owner ? ' rédigé par '+owner : ''} · Crime Investigation Division`);
+    }
 }
 
 // ===== MODALE RAPPORT =====
@@ -7208,7 +7293,16 @@ async function loadEditorAccounts() {
     if (_editorAccountsCache.length) return;
     try {
         const accs = await sbFetch('accounts?status=eq.approved&select=username,first_name,last_name,grade');
-        _editorAccountsCache = (accs || []).filter(a => a.username !== (currentUser && currentUser.username));
+        const gradeOrder = ['commanding','supervisor cid','master investigator','sénior détective','senior detective','détective','detective','command staff','procureur'];
+        const allAccs = (accs || []).slice();
+        if (currentUser && !allAccs.some(a => a.username === currentUser.username)) {
+            allAccs.unshift({ username: currentUser.username, first_name: currentUser.firstName, last_name: currentUser.lastName, grade: currentUser.grade });
+        }
+        _editorAccountsCache = allAccs.sort((a, b) => {
+            const ia = gradeOrder.indexOf((a.grade||'').toLowerCase());
+            const ib = gradeOrder.indexOf((b.grade||'').toLowerCase());
+            return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+        });
     } catch(e) {}
 }
 function filterEditorSuggestions(query) {
@@ -7263,6 +7357,13 @@ function rapMetaLabel(rap, key) {
     const m = rap.field_meta[key];
     if (!m) return '';
     return `<span class="field-meta">✏️ @${m.by} — ${m.at}</span>`;
+}
+
+
+function updateOgMeta(title, description) {
+    ['og:title','twitter:title'].forEach(p => { const el = document.querySelector(`meta[property='${p}']`); if(el) el.setAttribute('content', title); });
+    ['og:description','twitter:description'].forEach(p => { const el = document.querySelector(`meta[property='${p}']`); if(el) el.setAttribute('content', description); });
+    document.title = title;
 }
 
 // ===== ACCÈS PAR LIEN — RAPPORTS =====
