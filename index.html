@@ -1197,7 +1197,7 @@
                     <div class="nav-dropdown-item" data-tab="rapport" onclick="selectDossiersMenu('rapport')">📋 Rapport</div>
                 </div>
             </div>
-            <button class="nav-tab" id="tabCarte" onclick="switchMainTab('carte')">
+            <button class="nav-tab" id="tabCarte" onclick="switchMainTab('carte')" style="display:none;">
                 🗺️ Carte
             </button>
             <button class="nav-tab" id="tabOrgChart" onclick="switchMainTab('orgchart')">
@@ -1609,7 +1609,7 @@ async function doLogin() {
         localStorage.setItem('cid_session', JSON.stringify(currentUser));
         showPage('pageDossiers');
         renderUserHeader();
-        setTimeout(async () => { try { await loadOrgMembersFromSupabase(); } catch(e){} try { await loadDocEditors(); } catch(e){} try { await loadDocumentsFromSupabase(); } catch(e){} renderUserHeader(); renderDossiersList(); renderInlineOrg(); try { syncOrgGradesFromAccounts(); } catch(e){} const docTab = document.getElementById('tabDocuments'); if(docTab) docTab.style.display = getPermLevel() === 'procureur' ? 'none' : ''; try { const savedTab = sessionStorage.getItem('cid_active_tab'); if (savedTab && savedTab !== 'dossiers') setTimeout(() => switchMainTab(savedTab), 400); } catch(e){} }, 300);
+        setTimeout(async () => { try { await loadOrgMembersFromSupabase(); } catch(e){} try { await loadDocEditors(); } catch(e){} try { await loadDocumentsFromSupabase(); } catch(e){} renderUserHeader(); renderDossiersList(); renderInlineOrg(); try { syncOrgGradesFromAccounts(); } catch(e){} const docTab = document.getElementById('tabDocuments'); if(docTab) docTab.style.display = getPermLevel() === 'procureur' ? 'none' : ''; const carteTab0 = document.getElementById('tabCarte'); if(carteTab0) carteTab0.style.display = getPermLevel() === 'procureur' ? 'none' : ''; try { const savedTab = sessionStorage.getItem('cid_active_tab'); if (savedTab && savedTab !== 'dossiers') setTimeout(() => switchMainTab(savedTab), 400); } catch(e){} }, 300);
         setTimeout(() => checkPendingLink(), 300);
     } catch(e) { showMsg('loginMsg','Erreur: ' + e.message,'error'); }
 }
@@ -1903,9 +1903,11 @@ async function renderDossiersList() {
     currentDossierCache = filteredList;
     updateSidebarCounts();
     renderInlineOrg();
-    // Show/hide Documents tab for procureur
+    // Show/hide Documents & Carte tab for procureur
     const docTab = document.getElementById('tabDocuments');
     if (docTab) docTab.style.display = getPermLevel() === 'procureur' ? 'none' : '';
+    const carteTab = document.getElementById('tabCarte');
+    if (carteTab) carteTab.style.display = getPermLevel() === 'procureur' ? 'none' : '';
 
     if (filteredList.length === 0) {
         container.innerHTML = `<div class="empty-state"><h2>Aucun dossier</h2><p>${canCreate?'Créez un nouveau dossier pour commencer':'Aucun dossier disponible'}</p></div>`;
@@ -4551,6 +4553,7 @@ async function saveMyProfile() {
 // ===== MAIN TAB NAVIGATION =====
 function switchMainTab(tab) {
     if (tab === 'documents' && getPermLevel() === 'procureur') return;
+    if (tab === 'carte' && getPermLevel() === 'procureur') return;
 
     const tabIdMap = { dossiers:'tabDossiers', carte:'tabCarte', orgchart:'tabOrgChart', documents:'tabDocuments', deposition:'tabDeposition', rapport:'tabRapport' };
     const contentIdMap = { dossiers:'tabContentDossiers', carte:'tabContentCarte', orgchart:'tabContentOrgChart', documents:'tabContentDocuments', deposition:'tabContentDeposition', rapport:'tabContentRapport' };
@@ -4579,12 +4582,14 @@ function switchMainTab(tab) {
     if (tab === 'documents') renderDocumentsTab();
     if (tab === 'deposition') { currentDepositionId = null; renderMainDepositionTab(); }
     if (tab === 'rapport') { currentRapportId = null; renderMainRapportTab(); }
-    if (tab === 'carte') { initCarte(); setTimeout(() => { if(_carteMap) { _carteMap.invalidateSize(true); _carteMap.fitBounds([[0,0],[1291,1375]],{padding:[10,10]}); } }, 300); }
+    if (tab === 'carte') { const _carteAlreadyInit = !!_carteMap; initCarte(); setTimeout(() => { if(_carteMap) { _carteMap.invalidateSize(true); if (!_carteAlreadyInit) _carteMap.fitBounds([[0,0],[1291,1375]],{padding:[10,10]}); } }, 300); }
     // Sauvegarder l'onglet actif pour le restaurer au refresh
     try { sessionStorage.setItem('cid_active_tab', tab); } catch(e) {}
 
     const docTab = document.getElementById('tabDocuments');
     if (docTab) docTab.style.display = getPermLevel() === 'procureur' ? 'none' : '';
+    const carteTabEl = document.getElementById('tabCarte');
+    if (carteTabEl) carteTabEl.style.display = getPermLevel() === 'procureur' ? 'none' : '';
 }
 
 // ===== DROPDOWN NAV DOSSIERS / DÉPOSITION =====
@@ -5431,7 +5436,7 @@ async function switchToAccount(idx) {
         
         showPage('pageDossiers');
         renderUserHeader();
-        setTimeout(async () => { await loadOrgMembersFromSupabase(); renderDossiersList(); renderInlineOrg(); syncOrgGradesFromAccounts(); const docTab = document.getElementById('tabDocuments'); if(docTab) docTab.style.display = getPermLevel() === 'procureur' ? 'none' : ''; }, 300);
+        setTimeout(async () => { await loadOrgMembersFromSupabase(); renderDossiersList(); renderInlineOrg(); syncOrgGradesFromAccounts(); const docTab = document.getElementById('tabDocuments'); if(docTab) docTab.style.display = getPermLevel() === 'procureur' ? 'none' : ''; const carteTab2 = document.getElementById('tabCarte'); if(carteTab2) carteTab2.style.display = getPermLevel() === 'procureur' ? 'none' : ''; }, 300);
     } catch(e) { alert('Erreur: ' + e.message); }
 }
 
@@ -7739,7 +7744,7 @@ async function initCarte() {
     await loadCarteData();
 
     container.innerHTML = `
-    <div style="display:flex;height:100%;gap:0;">
+    <div id="carteWrapper" style="display:flex;height:100%;gap:0;">
         <!-- Sidebar gauche -->
         <div id="carteSidebar" style="width:240px;flex-shrink:0;background:#0a1628;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid rgba(201,162,39,0.2);">
             <div style="padding:14px 16px;border-bottom:1px solid rgba(201,162,39,0.2);">
@@ -7767,7 +7772,6 @@ async function initCarte() {
             <div style="padding:12px 14px;flex:1;overflow-y:auto;" id="cartePointsList"></div>
 
             <div style="padding:12px 14px;border-top:1px solid rgba(201,162,39,0.2);">
-                <button onclick="promptCarteImageUrl()" style="width:100%;padding:7px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.3);border-radius:8px;color:#C9A227;font-size:11px;font-weight:700;cursor:pointer;margin-bottom:8px;">🖼️ Changer l'image de la carte</button>
                 <div style="color:rgba(255,255,255,0.4);font-size:9px;text-align:center;margin-bottom:6px;">
                     <kbd style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:3px;font-size:9px;">Ctrl</kbd> + clic = ajouter un point<br>
                     <kbd style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:3px;font-size:9px;">Alt</kbd> + clic = dessiner une zone
@@ -7780,11 +7784,9 @@ async function initCarte() {
             </div>
         </div>
 
-        <!-- Carte : iframe gta-5-map.com + canvas overlay Leaflet -->
+        <!-- Carte : image haute résolution + canvas overlay Leaflet -->
         <div style="flex:1;position:relative;overflow:hidden;">
-            <iframe id="gtaIframe" src="https://gta-5-map.com/" style="width:100%;height:100%;border:none;position:absolute;top:0;left:0;z-index:1;" allowfullscreen></iframe>
-            <!-- Overlay Leaflet transparent pour les marqueurs CID -->
-            <div id="gtaMap" style="width:100%;height:100%;position:absolute;top:0;left:0;z-index:2;pointer-events:none;background:transparent;"></div>
+            <div id="gtaMap" style="width:100%;height:100%;position:absolute;top:0;left:0;z-index:2;background:#1a5c8a;"></div>
             <div style="position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:500;">
                 <button onclick="if(_carteMap)_carteMap.zoomIn()" style="width:32px;height:32px;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;">+</button>
                 <button onclick="if(_carteMap)_carteMap.zoomOut()" style="width:32px;height:32px;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;">−</button>
@@ -7844,6 +7846,10 @@ function _initLeafletMap() {
         maxZoom: 6,
         zoomControl: false,
         attributionControl: false,
+        fadeAnimation: false,
+        zoomAnimation: true,
+        markerZoomAnimation: true,
+        preferCanvas: false,
     });
     const bounds = [[-145, -200], [0, 0]]; // inutilisé
 
@@ -7859,8 +7865,14 @@ function _initLeafletMap() {
     
     _tileLayer = L.imageOverlay(_mapSrc, mapBounds, { 
         opacity: 1,
-        crossOrigin: _customUrl ? 'anonymous' : null
+        crossOrigin: _customUrl ? 'anonymous' : null,
+        interactive: false
     }).addTo(_carteMap);
+    // Rendu net (pas de flou lissé à l'excès) tout en gardant une bonne qualité au zoom
+    if (_tileLayer.getElement) {
+        const imgEl = _tileLayer.getElement();
+        if (imgEl) { imgEl.style.imageRendering = 'auto'; imgEl.setAttribute('draggable', 'false'); }
+    }
     _carteMap.setMinZoom(-4);
     _carteMap.setMaxZoom(6);
     setTimeout(() => {
