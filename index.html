@@ -63,9 +63,12 @@
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Inter','Segoe UI',system-ui,sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; font-size: 14px; -webkit-font-smoothing: antialiased; }
-        .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
-        .page { display: none; }
+        html, body { height: 100%; overflow: hidden; }
+        .container { max-width: 1300px; margin: 0 auto; padding: 16px 20px; }
+        .page { display: none; height: 100vh; overflow-y: auto; overflow-x: hidden; }
         .page.active { display: block; }
+        /* Page carte : pas de scroll, pleine hauteur */
+        #pageDossiers.active { overflow: hidden; height: 100vh; }
 
         /* ===== AUTH ===== */
         .auth-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: transparent; position: relative; overflow: hidden; }
@@ -1217,7 +1220,7 @@
 
         <!-- TAB: ORGANIGRAMME -->
         <div class="tab-content" id="tabContentCarte">
-            <div id="mainCarteContent" style="height:calc(100vh - 180px);min-height:500px;"></div>
+            <div id="mainCarteContent" style="height:calc(100vh - 172px);min-height:400px;"></div>
         </div>
 
         <div class="tab-content" id="tabContentOrgChart">
@@ -7808,23 +7811,37 @@ let _tileLayer = null;
 function _initLeafletMap() {
     if (!window.L) return;
 
-    // Bounds de la carte GTA V (image custom)
-    const bounds = [[-256, 0], [0, 256]];
+    // Carte GTA V avec tuiles gta5-map.com (CRS standard)
     _carteMap = L.map('gtaMap', {
-        crs: L.CRS.Simple,
-        minZoom: -2,
-        maxZoom: 3,
+        center: [0, 0],
+        zoom: 3,
+        minZoom: 1,
+        maxZoom: 7,
         zoomControl: false,
         attributionControl: false,
     });
+    const bounds = [[-145, -200], [0, 0]];
 
     // Tuiles GTA V depuis cdnjs
-    _tileLayer = L.imageOverlay(
-        'https://raw.githubusercontent.com/nickytonline/gtav-map/master/map/mapHD.jpg',
-        bounds
-    ).addTo(_carteMap);
+    document.getElementById('gtaMap').style.background = '#1a5c8a';
 
-    _carteMap.fitBounds(bounds);
+    // Tuiles GTA V Atlas (même source que gta-5-map.com)
+    const tileUrls = {
+        atlas: 'https://s.gta5map.com/tiles/atlas/{z}/{x}/{y}.jpg',
+        route: 'https://s.gta5map.com/tiles/road/{z}/{x}/{y}.jpg',
+        satellite: 'https://s.gta5map.com/tiles/satellite/{z}/{x}/{y}.jpg',
+    };
+
+    _tileLayer = L.tileLayer(tileUrls.atlas, {
+        minZoom: 1, maxZoom: 7,
+        tileSize: 256,
+        noWrap: true,
+        errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+    }).addTo(_carteMap);
+
+    window._carteTileUrls = tileUrls;
+
+    _carteMap.setView([0, 0], 4);
 
     // Événements
     _carteMap.on('click', (e) => {
@@ -7851,7 +7868,7 @@ function _initLeafletMap() {
             }
         }
         const u = document.getElementById('carteUser');
-        if (u) u.textContent = `${e.latlng.lat.toFixed(1)}, ${e.latlng.lng.toFixed(1)}`;
+        if (u) u.textContent = `Lat: ${e.latlng.lat.toFixed(3)} | Lng: ${e.latlng.lng.toFixed(3)}`;
     });
 
     renderCarteMarkers();
@@ -7860,6 +7877,13 @@ function _initLeafletMap() {
 
 function setMapLayer(type) {
     _currentLayer = type;
+    if (_carteMap && _tileLayer && window._carteTileUrls) {
+        _carteMap.removeLayer(_tileLayer);
+        _tileLayer = L.tileLayer(window._carteTileUrls[type] || window._carteTileUrls.atlas, {
+            minZoom: 0, maxZoom: 7, tileSize: 256, noWrap: true,
+            errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+        }).addTo(_carteMap);
+    }
     ['atlas','route','satellite'].forEach(t => {
         const btn = document.getElementById('btn' + t.charAt(0).toUpperCase() + t.slice(1));
         if (btn) {
@@ -8006,6 +8030,15 @@ function toggleCarteCategory(cat) {
             _carteMap.removeLayer(m);
         }
     });
+}
+
+function promptCarteImage() {
+    const url = prompt('Colle l\'URL directe de la carte GTA V (depuis imgbb, imgur...):', '');
+    if (!url || !url.startsWith('http')) return;
+    localStorage.setItem('cid_carte_image', url);
+    _carteMap.remove();
+    _carteMap = null;
+    initCarte();
 }
 
 function renderCarteUI() {
