@@ -7672,6 +7672,8 @@ let _drawingZone = false;
 let _zonePoints = [];
 let _tempPolyline = null;
 let _drawingItineraire = false; // mode "en train de construire un itinéraire" : clic sur points existants
+let _adjustingItineraire = false; // mode "ajuster le tracé" : on peut glisser les points de la route
+let _draggingRoutePoint = null; // { itId, idx } pendant qu'on glisse un point du tracé
 let _itineraireSelection = []; // liste ordonnée des points cliqués pendant la construction
 
 const POINT_TYPES = {
@@ -7869,7 +7871,8 @@ async function initCarte() {
             <div id="carte3DContainer" style="display:none;width:100%;height:100%;position:absolute;top:0;left:0;z-index:3;background:#0a1628;"></div>
             <!-- Menu déroulant des itinéraires, au-dessus des boutons de calque -->
             <div id="carteItinerairesDropdown" style="display:none;position:absolute;top:10px;left:10px;z-index:500;gap:6px;">
-                <select id="carteItinerairesSelect" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 10px;cursor:pointer;max-width:220px;"></select>
+                <select id="carteItinerairesSelect" onchange="_adjustingItineraire=false;const b=document.getElementById('carteAjusterTraceBtn');if(b){b.style.background='#0a1628';b.style.color='#C9A227';}if(window._cvMap)_cvMap.redraw();" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 10px;cursor:pointer;max-width:220px;"></select>
+                <button id="carteAjusterTraceBtn" onclick="toggleAjusterTrace()" title="Glisse les points du tracé pour l'ajuster à la main" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 10px;cursor:pointer;white-space:nowrap;">✋ Ajuster le tracé</button>
                 <button onclick="deleteSelectedItineraire()" title="Supprimer l'itinéraire sélectionné" style="background:rgba(211,47,47,0.15);color:#ef5350;border:1px solid rgba(211,47,47,0.4);border-radius:8px;font-size:13px;padding:7px 10px;cursor:pointer;">🗑</button>
             </div>
             <!-- Boutons de fond de carte : cliquables directement, pas de menu déroulant -->
@@ -8196,6 +8199,23 @@ function _initLeafletMap() {
             ctx.stroke();
             ctx.fill();
             ctx.restore();
+
+            // Poignées de glisser-déposer visibles quand le mode "ajuster le tracé" est actif
+            // sur cet itinéraire précis (sélectionné dans le menu déroulant)
+            const _selEl = document.getElementById('carteItinerairesSelect');
+            if (_adjustingItineraire && _selEl && _selEl.value === it.id) {
+                routeLL.forEach((p, idx) => {
+                    const s = latLngToScreen(p[0], p[1]);
+                    const isDragging = _draggingRoutePoint && _draggingRoutePoint.itId === it.id && _draggingRoutePoint.idx === idx;
+                    ctx.beginPath();
+                    ctx.arc(s.x, s.y, isDragging ? 8 : 6, 0, Math.PI * 2);
+                    ctx.fillStyle = isDragging ? '#ffffff' : '#ffcc00';
+                    ctx.fill();
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeStyle = 'rgba(20,15,0,0.8)';
+                    ctx.stroke();
+                });
+            }
         });
 
         // Itinéraire en cours de construction (aperçu pointillé doré)
@@ -8295,12 +8315,44 @@ function _initLeafletMap() {
     }
 
     // Événements souris
-    let dragging = false, dragMoved = false, lastX = 0, lastY = 0;
+    let dragging = false, dragMoved = false, lastX = 0, lastY = 0, _justDraggedRoutePoint = false;
     canvas.addEventListener('mousedown', (e) => {
+        // Mode "ajuster le tracé" : si on clique près d'un point de la route sélectionnée, on le
+        // glisse au lieu de déplacer la carte
+        if (_adjustingItineraire) {
+            const sel = document.getElementById('carteItinerairesSelect');
+            const it = sel && _carteItineraires.find(i => i.id === sel.value);
+            if (it && it.route && it.route.length) {
+                const rect = canvas.getBoundingClientRect();
+                const px = e.clientX - rect.left, py = e.clientY - rect.top;
+                let bestIdx = -1, bestDist = 16; // rayon de détection en pixels
+                it.route.forEach((p, idx) => {
+                    const s = latLngToScreen(p[0], p[1]);
+                    const d = Math.hypot(s.x - px, s.y - py);
+                    if (d < bestDist) { bestDist = d; bestIdx = idx; }
+                });
+                if (bestIdx !== -1) {
+                    _draggingRoutePoint = { itId: it.id, idx: bestIdx };
+                    _justDraggedRoutePoint = true;
+                    return; // ne pas démarrer le panoramique de la carte
+                }
+            }
+        }
         dragging = true; dragMoved = false;
         lastX = e.offsetX; lastY = e.offsetY;
     });
     window.addEventListener('mousemove', (e) => {
+        if (_draggingRoutePoint) {
+            const rect = canvas.getBoundingClientRect();
+            const px = e.clientX - rect.left, py = e.clientY - rect.top;
+            const ll = screenToLatLng(px, py);
+            const it = _carteItineraires.find(i => i.id === _draggingRoutePoint.itId);
+            if (it && it.route && it.route[_draggingRoutePoint.idx]) {
+                it.route[_draggingRoutePoint.idx] = [ll.lat, ll.lng];
+                draw();
+            }
+            return;
+        }
         if (!dragging) return;
         const rect = canvas.getBoundingClientRect();
         const px = e.clientX - rect.left, py = e.clientY - rect.top;
@@ -8313,7 +8365,10 @@ function _initLeafletMap() {
             draw();
         }
     });
-    window.addEventListener('mouseup', () => { dragging = false; });
+    window.addEventListener('mouseup', () => {
+        dragging = false;
+        if (_draggingRoutePoint) { _draggingRoutePoint = null; saveCarteData(); }
+    });
 
     canvas.addEventListener('wheel', (e) => {
         e.preventDefault();
@@ -8325,6 +8380,7 @@ function _initLeafletMap() {
 
     canvas.addEventListener('click', (e) => {
         if (dragMoved) { dragMoved = false; return; }
+        if (_justDraggedRoutePoint) { _justDraggedRoutePoint = false; return; }
         const rect = canvas.getBoundingClientRect();
         const px = e.clientX - rect.left, py = e.clientY - rect.top;
         const ll = screenToLatLng(px, py);
@@ -8855,6 +8911,19 @@ function deleteSelectedItineraire() {
     deleteItineraire(sel.value);
 }
 
+function toggleAjusterTrace() {
+    const sel = document.getElementById('carteItinerairesSelect');
+    if (!sel || !sel.value) { alert('Sélectionne d\'abord un itinéraire dans le menu déroulant.'); return; }
+    _adjustingItineraire = !_adjustingItineraire;
+    const btn = document.getElementById('carteAjusterTraceBtn');
+    if (_adjustingItineraire) {
+        if (btn) { btn.style.background = '#C9A227'; btn.style.color = '#0D2B5E'; }
+    } else {
+        _draggingRoutePoint = null;
+        if (btn) { btn.style.background = '#0a1628'; btn.style.color = '#C9A227'; }
+    }
+}
+
 function confirmAddZone() {
     const nom = document.getElementById('carteZoneNom').value.trim();
     const type = document.getElementById('carteZoneType').value;
@@ -8948,6 +9017,7 @@ function switchCarteLayer(key) {
     const layer = MAP_LAYERS[key];
     if (!layer) return;
     _drawingItineraire = false; _itineraireSelection = []; // le mode dessin ne survit pas à un changement de couche
+    _adjustingItineraire = false; _draggingRoutePoint = null;
     localStorage.setItem('cid_carte_image_url', layer.url);
     localStorage.setItem('cid_carte_layer_key', key);
     _carteMap = null; window._cvMap = null;
