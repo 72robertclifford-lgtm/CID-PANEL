@@ -7853,9 +7853,7 @@ async function initCarte() {
                 ${_renderCarteZoneTypes()}
             </div>
 
-            ${getPermLevel() === 'supervisor' ? `<div style="padding:0 14px;"><button onclick="deleteAllCartePoints()" style="width:100%;background:rgba(211,47,47,0.15);color:#ef5350;border:1px solid rgba(211,47,47,0.4);padding:7px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">🗑 Supprimer tous les points</button></div>` : ''}
             <div style="padding:12px 14px;flex:1;overflow-y:auto;" id="cartePointsList"></div>
-            <div style="padding:0 14px;" id="carteItinerairesList"></div>
 
             <div style="padding:12px 14px;border-top:1px solid rgba(201,162,39,0.2);">
                 <div style="color:rgba(255,255,255,0.4);font-size:9px;text-align:center;">
@@ -7869,8 +7867,13 @@ async function initCarte() {
         <div style="flex:1;position:relative;overflow:hidden;">
             <canvas id="gtaMap" style="width:100%;height:100%;position:absolute;top:0;left:0;z-index:2;background:#1a5c8a;touch-action:none;"></canvas>
             <div id="carte3DContainer" style="display:none;width:100%;height:100%;position:absolute;top:0;left:0;z-index:3;background:#0a1628;"></div>
+            <!-- Menu déroulant des itinéraires, au-dessus des boutons de calque -->
+            <div id="carteItinerairesDropdown" style="display:none;position:absolute;top:10px;left:10px;z-index:500;gap:6px;">
+                <select id="carteItinerairesSelect" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 10px;cursor:pointer;max-width:220px;"></select>
+                <button onclick="deleteSelectedItineraire()" title="Supprimer l'itinéraire sélectionné" style="background:rgba(211,47,47,0.15);color:#ef5350;border:1px solid rgba(211,47,47,0.4);border-radius:8px;font-size:13px;padding:7px 10px;cursor:pointer;">🗑</button>
+            </div>
             <!-- Boutons de fond de carte : cliquables directement, pas de menu déroulant -->
-            <div id="carteLayerButtons" style="position:absolute;top:10px;left:10px;display:flex;gap:6px;z-index:500;">
+            <div id="carteLayerButtons" style="position:absolute;top:46px;left:10px;display:flex;gap:6px;z-index:500;">
                 ${Object.keys(MAP_LAYERS).map(k => `<button data-layer-key="${k}" onclick="switchCarteLayer('${k}')" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;">${MAP_LAYERS[k].label}</button>`).join('')}
                 <button id="carte3DToggleBtn" onclick="toggleCarte3DView()" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;">🧊 Terrain 3D</button>
                 <button onclick="createRondeAutomatique()" title="Crée automatiquement une ronde passant par tous les points visibles" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;">🔄 Ronde automatique</button>
@@ -7881,7 +7884,7 @@ async function initCarte() {
                 <button onclick="if(window._cvMap)_cvMap.zoomBy(-1)" style="width:32px;height:32px;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;">−</button>
             </div>
             <!-- Indicateur mode zone : flottant sur la carte, bien visible, ancré à gauche sous les boutons de calque -->
-            <div id="drawingStatus" style="display:none;position:absolute;top:56px;left:10px;z-index:600;background:#0f1628;border:2px solid #C9A227;padding:12px 20px;border-radius:12px;color:#C9A227;font-size:14px;font-weight:800;text-align:left;box-shadow:0 8px 30px rgba(0,0,0,0.5);">
+            <div id="drawingStatus" style="display:none;position:absolute;top:92px;left:10px;z-index:600;background:#0f1628;border:2px solid #C9A227;padding:12px 20px;border-radius:12px;color:#C9A227;font-size:14px;font-weight:800;text-align:left;box-shadow:0 8px 30px rgba(0,0,0,0.5);">
                 ✏️ Mode zone actif
                 <div style="margin-top:8px;display:flex;gap:8px;justify-content:flex-start;">
                     <button onclick="finishZone()" style="background:#C9A227;color:#0D2B5E;border:none;padding:7px 16px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:800;">✅ Terminer</button>
@@ -8596,11 +8599,11 @@ function _buildRoadGrid(img, IMG_W, IMG_H) {
             const isWater = b > r + 20 && b > g + 10;
             const isGreen = g > r + 15 && g > b + 15;
             let cost;
-            if (isWater) cost = 90;
-            else if (isGreen) cost = 30;
+            if (isWater) cost = 160;
+            else if (isGreen) cost = 55;
             else if (brightness > 195) cost = 1;   // routes/lignes claires
-            else if (brightness > 140) cost = 3;   // rues en ville / zones claires
-            else cost = 22;                          // désert foncé, relief, etc.
+            else if (brightness > 140) cost = 4;   // rues en ville / zones claires
+            else cost = 40;                          // désert foncé, relief, etc.
             costs[i] = cost;
         }
         _roadGrid = { RES, costs, IMG_W, IMG_H };
@@ -8811,7 +8814,6 @@ function cancelItineraire() {
 
 function deleteItineraire(id) {
     if (!_canDeleteCarteItem()) { alert('Seuls Commanding, Supervisor CID et Master Investigator peuvent supprimer un itinéraire.'); return; }
-    if (!confirm('Supprimer cet itinéraire ?')) return;
     _carteItineraires = _carteItineraires.filter(it => it.id !== id);
     saveCarteData();
     renderCarteItinerairesList();
@@ -8819,26 +8821,23 @@ function deleteItineraire(id) {
 }
 
 function renderCarteItinerairesList() {
-    const el = document.getElementById('carteItinerairesList');
-    if (!el) return;
-    if (!_carteItineraires.length) { el.innerHTML = ''; return; }
-    const canDelete = _canDeleteCarteItem();
-    el.innerHTML = '<div style="color:#C9A227;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px;">Itinéraires</div>' +
-        (canDelete ? `<button onclick="deleteAllItineraires()" style="width:100%;background:rgba(211,47,47,0.15);color:#ef5350;border:1px solid rgba(211,47,47,0.4);padding:6px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;margin-bottom:6px;">🗑 Supprimer tous les itinéraires</button>` : '') +
-        _carteItineraires.map(it => `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:rgba(255,255,255,0.05);border-radius:6px;margin-bottom:4px;font-size:12px;color:white;">
-            <span>🧭 ${it.nom} <small style="color:#888">(${it.pointIds.length} pts)</small></span>
-            ${canDelete ? `<button onclick="deleteItineraire('${it.id}')" style="background:none;border:none;color:#ef5350;cursor:pointer;font-size:13px;">🗑</button>` : ''}
-        </div>`).join('');
+    const wrap = document.getElementById('carteItinerairesDropdown');
+    const sel = document.getElementById('carteItinerairesSelect');
+    if (!wrap || !sel) return;
+    if (!_carteItineraires.length) { wrap.style.display = 'none'; sel.innerHTML = ''; return; }
+    wrap.style.display = 'flex';
+    const prevValue = sel.value;
+    sel.innerHTML = _carteItineraires.map(it => `<option value="${it.id}">🧭 ${it.nom} (${it.pointIds.length} pts)</option>`).join('');
+    if (_carteItineraires.some(it => it.id === prevValue)) sel.value = prevValue;
 }
 
-function deleteAllItineraires() {
-    if (!_canDeleteCarteItem()) { alert('Seuls Commanding, Supervisor CID et Master Investigator peuvent faire ça.'); return; }
-    if (!_carteItineraires.length) return;
-    if (!confirm(`Supprimer les ${_carteItineraires.length} itinéraires enregistrés ?`)) return;
-    _carteItineraires = [];
-    saveCarteData();
-    renderCarteItinerairesList();
-    if (window._cvMap) _cvMap.redraw();
+function deleteSelectedItineraire() {
+    const sel = document.getElementById('carteItinerairesSelect');
+    if (!sel || !sel.value) return;
+    const it = _carteItineraires.find(i => i.id === sel.value);
+    if (!it) return;
+    if (!confirm(`Supprimer l'itinéraire "${it.nom}" ?`)) return;
+    deleteItineraire(sel.value);
 }
 
 function confirmAddZone() {
