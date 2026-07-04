@@ -7692,8 +7692,9 @@ const ZONE_TYPES = {
 // Les fichiers doivent être uploadés à la racine du repo, à côté de index.html.
 // 'atlas' est la carte par défaut (voir DEFAULT_MAP_LAYER_KEY plus bas).
 const MAP_LAYERS = {
-    'atlas':     { url: 'carte-gta-atlas.png',     label: '🗺️ Atlas' },
-    'satellite': { url: 'carte-gta-satellite.jpg', label: '🛰️ Satellite' },
+    'atlas':      { url: 'carte-gta-atlas.png',     label: '🗺️ Atlas' },
+    'satellite':  { url: 'carte-gta-satellite.jpg', label: '🛰️ Satellite' },
+    'itineraire': { url: 'carte-gta-atlas.png',     label: '🧭 Itinéraire' },
 };
 const DEFAULT_MAP_LAYER_KEY = 'atlas';
 
@@ -7872,7 +7873,6 @@ async function initCarte() {
             <div id="carteLayerButtons" style="position:absolute;top:10px;left:10px;display:flex;gap:6px;z-index:500;">
                 ${Object.keys(MAP_LAYERS).map(k => `<button data-layer-key="${k}" onclick="switchCarteLayer('${k}')" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;">${MAP_LAYERS[k].label}</button>`).join('')}
                 <button id="carte3DToggleBtn" onclick="toggleCarte3DView()" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;">🧊 Terrain 3D</button>
-                <button id="carteItineraireBtn" onclick="toggleItineraireMode()" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;">🧭 Itinéraire</button>
                 <button onclick="createRondeAutomatique()" title="Crée automatiquement une ronde passant par tous les points visibles" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;">🔄 Ronde automatique</button>
                 ${getPermLevel() === 'supervisor' ? `<button id="carteAccessToggleBtn" onclick="toggleCarteAccessRestriction()" style="border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;"></button>` : ''}
             </div>
@@ -7889,17 +7889,6 @@ async function initCarte() {
                 </div>
             </div>
             <!-- Indicateur mode itinéraire -->
-            <div id="itineraireStatus" style="display:none;position:absolute;top:56px;left:10px;z-index:600;background:#0f1628;border:2px solid #C9A227;padding:12px 20px;border-radius:12px;color:#C9A227;font-size:14px;font-weight:800;text-align:left;box-shadow:0 8px 30px rgba(0,0,0,0.5);max-width:280px;">
-                🧭 Clique sur les points à relier (<span id="itineraireCount">0</span> sélectionné(s))
-                <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;font-weight:600;cursor:pointer;">
-                    <input type="checkbox" id="itineraireTriProximite" checked style="cursor:pointer;">
-                    Trier du plus proche au plus loin
-                </label>
-                <div style="margin-top:8px;display:flex;gap:8px;justify-content:flex-start;">
-                    <button onclick="finishItineraire()" style="background:#C9A227;color:#0D2B5E;border:none;padding:7px 16px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:800;">✅ Terminer</button>
-                    <button onclick="cancelItineraire()" style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);padding:7px 14px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:700;">✕ Annuler</button>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -8676,7 +8665,45 @@ function _astarPath(latA, lngA, latB, lngB) {
         cur = cameFrom[cur];
     }
     path.reverse();
-    return path;
+    return _simplifyRoute(path);
+}
+
+// Coût moyen le long d'une ligne droite entre deux points (échantillonnage régulier sur la grille).
+// Sert à vérifier si on peut "couper" un tronçon en escalier par un segment plus direct sans
+// quitter la route — élimine l'effet de zigzag typique d'un A* en 8 directions.
+function _lineAvgCost(pA, pB) {
+    if (!_roadGrid) return Infinity;
+    const { RES, costs, IMG_W, IMG_H } = _roadGrid;
+    const steps = 12;
+    let total = 0;
+    for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const lat = pA[0] + (pB[0] - pA[0]) * t;
+        const lng = pA[1] + (pB[1] - pA[1]) * t;
+        const gx = Math.max(0, Math.min(RES-1, Math.round((lng/IMG_W)*RES)));
+        const gy = Math.max(0, Math.min(RES-1, Math.round((lat/IMG_H)*RES)));
+        total += costs[gy*RES+gx];
+    }
+    return total / (steps + 1);
+}
+
+// Simplifie un chemin en escalier (issu du A* en 8 directions) en gardant uniquement les vrais
+// points de virage : à chaque étape, on cherche le point le plus loin possible atteignable en
+// ligne droite sans trop s'écarter de la route, ce qui redresse les zigzags en segments propres.
+function _simplifyRoute(path) {
+    if (!_roadGrid || path.length < 3) return path;
+    const result = [path[0]];
+    let i = 0;
+    let guard = 0;
+    while (i < path.length - 1 && guard++ < path.length * 2) {
+        let found = i + 1;
+        for (let j = path.length - 1; j > i + 1; j--) {
+            if (_lineAvgCost(path[i], path[j]) < 4) { found = j; break; }
+        }
+        result.push(path[found]);
+        i = found;
+    }
+    return result;
 }
 
 // Calcule le trajet complet (suivant les routes autant que possible) reliant une liste ordonnée
@@ -8797,10 +8824,21 @@ function renderCarteItinerairesList() {
     if (!_carteItineraires.length) { el.innerHTML = ''; return; }
     const canDelete = _canDeleteCarteItem();
     el.innerHTML = '<div style="color:#C9A227;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px;">Itinéraires</div>' +
+        (canDelete ? `<button onclick="deleteAllItineraires()" style="width:100%;background:rgba(211,47,47,0.15);color:#ef5350;border:1px solid rgba(211,47,47,0.4);padding:6px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;margin-bottom:6px;">🗑 Supprimer tous les itinéraires</button>` : '') +
         _carteItineraires.map(it => `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:rgba(255,255,255,0.05);border-radius:6px;margin-bottom:4px;font-size:12px;color:white;">
             <span>🧭 ${it.nom} <small style="color:#888">(${it.pointIds.length} pts)</small></span>
             ${canDelete ? `<button onclick="deleteItineraire('${it.id}')" style="background:none;border:none;color:#ef5350;cursor:pointer;font-size:13px;">🗑</button>` : ''}
         </div>`).join('');
+}
+
+function deleteAllItineraires() {
+    if (!_canDeleteCarteItem()) { alert('Seuls Commanding, Supervisor CID et Master Investigator peuvent faire ça.'); return; }
+    if (!_carteItineraires.length) return;
+    if (!confirm(`Supprimer les ${_carteItineraires.length} itinéraires enregistrés ?`)) return;
+    _carteItineraires = [];
+    saveCarteData();
+    renderCarteItinerairesList();
+    if (window._cvMap) _cvMap.redraw();
 }
 
 function confirmAddZone() {
