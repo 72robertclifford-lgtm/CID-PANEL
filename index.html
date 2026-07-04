@@ -8134,21 +8134,32 @@ function _initLeafletMap() {
             });
         }
 
-        // Itinéraires enregistrés : lignes reliant les points dans l'ordre choisi
+        // Itinéraires enregistrés : lignes reliant les points dans l'ordre choisi, style GPS GTA V
+        // (ligne jaune avec un liseré sombre pour se détacher nettement de n'importe quel fond de carte)
         _carteItineraires.forEach(it => {
             const pts = it.pointIds.map(id => _cartePoints.find(p => p.id === id)).filter(Boolean);
             if (pts.length < 2) return;
             // Utilise le trajet suivant les routes s'il a été calculé, sinon ligne droite en secours
             const routeLL = (it.route && it.route.length > 1) ? it.route : pts.map(p => [p.lat, p.lng]);
-            ctx.beginPath();
-            routeLL.forEach((p, i) => {
-                const s = latLngToScreen(p[0], p[1]);
-                if (i === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
-            });
+
+            const tracePath = () => {
+                ctx.beginPath();
+                routeLL.forEach((p, i) => {
+                    const s = latLngToScreen(p[0], p[1]);
+                    if (i === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+                });
+            };
             ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-            ctx.strokeStyle = '#00e5ff';
-            ctx.lineWidth = 3;
             ctx.setLineDash([]);
+            // Liseré sombre en dessous (plus épais)
+            tracePath();
+            ctx.strokeStyle = 'rgba(20,15,0,0.75)';
+            ctx.lineWidth = 6.5;
+            ctx.stroke();
+            // Ligne jaune GPS par-dessus
+            tracePath();
+            ctx.strokeStyle = '#ffcc00';
+            ctx.lineWidth = 4;
             ctx.stroke();
             // Flèches de direction régulièrement espacées le long du trajet
             const arrowEvery = Math.max(4, Math.floor(routeLL.length / (pts.length * 3)));
@@ -8159,11 +8170,26 @@ function _initLeafletMap() {
                 ctx.save();
                 ctx.translate(b.x, b.y); ctx.rotate(ang);
                 ctx.beginPath();
-                ctx.moveTo(-6, -5); ctx.lineTo(6, 0); ctx.lineTo(-6, 5); ctx.closePath();
-                ctx.fillStyle = '#00e5ff';
+                ctx.moveTo(-7, -6); ctx.lineTo(7, 0); ctx.lineTo(-7, 6); ctx.closePath();
+                ctx.fillStyle = '#1a1200';
                 ctx.fill();
                 ctx.restore();
             }
+            // Icône de destination façon "waypoint" GTA V au dernier point du trajet
+            const dest = routeLL[routeLL.length - 1];
+            const ds = latLngToScreen(dest[0], dest[1]);
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(ds.x, ds.y - 26);
+            ctx.lineTo(ds.x - 9, ds.y - 10);
+            ctx.lineTo(ds.x + 9, ds.y - 10);
+            ctx.closePath();
+            ctx.fillStyle = '#ffcc00';
+            ctx.strokeStyle = 'rgba(20,15,0,0.75)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.fill();
+            ctx.restore();
         });
 
         // Itinéraire en cours de construction (aperçu pointillé doré)
@@ -8568,7 +8594,7 @@ let _roadGrid = null; // { RES, costs: Float32Array, IMG_W, IMG_H }
 
 function _buildRoadGrid(img, IMG_W, IMG_H) {
     try {
-        const RES = 180; // résolution de la grille de recherche de chemin (compromis précision/vitesse)
+        const RES = 260; // résolution de la grille de recherche de chemin (compromis précision/vitesse)
         const canvas = document.createElement('canvas');
         canvas.width = RES; canvas.height = RES;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -8581,11 +8607,11 @@ function _buildRoadGrid(img, IMG_W, IMG_H) {
             const isWater = b > r + 20 && b > g + 10;
             const isGreen = g > r + 15 && g > b + 15;
             let cost;
-            if (isWater) cost = 35;
-            else if (isGreen) cost = 9;
+            if (isWater) cost = 90;
+            else if (isGreen) cost = 30;
             else if (brightness > 195) cost = 1;   // routes/lignes claires
-            else if (brightness > 140) cost = 2.5; // rues en ville / zones claires
-            else cost = 6;                          // désert foncé, relief, etc.
+            else if (brightness > 140) cost = 3;   // rues en ville / zones claires
+            else cost = 22;                          // désert foncé, relief, etc.
             costs[i] = cost;
         }
         _roadGrid = { RES, costs, IMG_W, IMG_H };
