@@ -7850,7 +7850,7 @@ function _initLeafletMap() {
 
     // URL par défaut de la carte haute résolution (8000x8000, hébergée sur GitHub Pages à côté de index.html).
     // Modifiable à la volée par localStorage.setItem('cid_carte_image_url', '...') si besoin de la changer sans redéployer.
-    const _DEFAULT_MAP_URL = 'carte-gta-atlas.png';
+    const _DEFAULT_MAP_URL = 'carte-gta-satellite.jpg';
     const _customUrl = localStorage.getItem('cid_carte_image_url');
     const _mapSrc = _customUrl || _DEFAULT_MAP_URL;
     const img = new Image();
@@ -7866,17 +7866,13 @@ function _initLeafletMap() {
 
     img.onload = () => {
         imgLoaded = true;
-        // Le zoom max autorisé correspond à la résolution native de l'image (1 pixel image = 1 pixel écran physique),
-        // ce qui garantit qu'on ne zoome jamais au-delà de ce que l'image peut afficher nettement.
+        // Zoom max plafonné à la résolution native de l'image (1 pixel image = 1 pixel écran physique).
+        // Au-delà, on afficherait plus de pixels écran qu'il n'y en a dans le fichier source, ce qui
+        // dégraderait forcément la qualité (flou/pixelisé) : on privilégie ici la qualité au zoom poussé.
         // On garde un plancher à 3 pour toujours permettre un minimum de zoom utile, même si l'image
         // externe haute résolution n'a pas encore chargé (fallback sur l'ancienne image basse résolution).
-        // Zoom max = résolution native de l'image, avec une marge de "zoom numérique" en plus (facteur ci-dessous)
-        // pour permettre d'aller plus loin visuellement. Passé le seuil natif (img.naturalWidth / IMG_W),
-        // ce zoom supplémentaire agrandit sans ajouter de vrai détail : légèrement plus doux, mais toujours lisible.
-        // Augmente DIGITAL_ZOOM_FACTOR si tu veux pouvoir zoomer encore plus loin (au prix d'un peu plus de flou).
-        const DIGITAL_ZOOM_FACTOR = 1.6;
         nativeScale = img.naturalWidth ? img.naturalWidth / IMG_W : 8;
-        maxScale = Math.max(3, Math.min(24, nativeScale * DIGITAL_ZOOM_FACTOR));
+        maxScale = Math.max(3, Math.min(24, nativeScale));
         fitToScreen();
         console.log('[Carte GTA] Image chargée:', _mapSrc, '| Résolution native:', img.naturalWidth + 'x' + img.naturalHeight, '| minScale:', minScale, '| maxScale:', maxScale);
         draw();
