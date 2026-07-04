@@ -7848,15 +7848,19 @@ function _initLeafletMap() {
     const ctx = canvas.getContext('2d');
     const IMG_W = 1375, IMG_H = 1291; // largeur/hauteur logique de l'image (lng=x jusqu'à 1375, lat=y jusqu'à 1291)
 
+    // URL par défaut de la carte haute résolution (8000x8000, hébergée sur GitHub Pages à côté de index.html).
+    // Modifiable à la volée par localStorage.setItem('cid_carte_image_url', '...') si besoin de la changer sans redéployer.
+    const _DEFAULT_MAP_URL = 'carte-gta-satellite.jpg';
     const _customUrl = localStorage.getItem('cid_carte_image_url');
-    const _mapSrc = _customUrl || window._gtaMapB64;
+    const _mapSrc = _customUrl || _DEFAULT_MAP_URL;
     const img = new Image();
-    if (_customUrl) img.crossOrigin = 'anonymous';
+    img.crossOrigin = 'anonymous';
     let imgLoaded = false;
 
     let scale = 1;       // pixels écran par unité image
     let minScale = 0.1;
     let maxScale = 8;    // recalculé après chargement selon la résolution réelle de l'image
+    let nativeScale = 8; // seuil au-delà duquel on dépasse la résolution native (zoom "numérique")
     let offX = 0, offY = 0; // décalage écran du coin (0,0) de l'image
     let dpr = Math.max(1, window.devicePixelRatio || 1);
 
@@ -7864,9 +7868,24 @@ function _initLeafletMap() {
         imgLoaded = true;
         // Le zoom max autorisé correspond à la résolution native de l'image (1 pixel image = 1 pixel écran physique),
         // ce qui garantit qu'on ne zoome jamais au-delà de ce que l'image peut afficher nettement.
-        maxScale = img.naturalWidth ? Math.max(4, Math.min(16, img.naturalWidth / IMG_W)) : 8;
+        // On garde un plancher à 3 pour toujours permettre un minimum de zoom utile, même si l'image
+        // externe haute résolution n'a pas encore chargé (fallback sur l'ancienne image basse résolution).
+        // Zoom max = résolution native de l'image, avec une marge de "zoom numérique" en plus (facteur ci-dessous)
+        // pour permettre d'aller plus loin visuellement. Passé le seuil natif (img.naturalWidth / IMG_W),
+        // ce zoom supplémentaire agrandit sans ajouter de vrai détail : légèrement plus doux, mais toujours lisible.
+        // Augmente DIGITAL_ZOOM_FACTOR si tu veux pouvoir zoomer encore plus loin (au prix d'un peu plus de flou).
+        const DIGITAL_ZOOM_FACTOR = 1.6;
+        nativeScale = img.naturalWidth ? img.naturalWidth / IMG_W : 8;
+        maxScale = Math.max(3, Math.min(24, nativeScale * DIGITAL_ZOOM_FACTOR));
         fitToScreen();
+        console.log('[Carte GTA] Image chargée:', _mapSrc, '| Résolution native:', img.naturalWidth + 'x' + img.naturalHeight, '| minScale:', minScale, '| maxScale:', maxScale);
         draw();
+    };
+    img.onerror = () => {
+        console.error('[Carte GTA] Échec de chargement de l\'image :', _mapSrc, '- fallback sur l\'ancienne image basse résolution.');
+        if (window._gtaMapB64 && img.src !== window._gtaMapB64) {
+            img.src = window._gtaMapB64;
+        }
     };
     img.src = _mapSrc;
 
@@ -7927,9 +7946,9 @@ function _initLeafletMap() {
         ctx.fillStyle = '#1a5c8a';
         ctx.fillRect(0, 0, cw, ch);
         if (imgLoaded) {
-            // Lissage toujours actif en qualité maximale : le navigateur choisit le meilleur filtre
-            // (bilinéaire/mipmaps) qu'on soit en vue large ou zoomée, ce qui évite le crénelage
-            // et le flou grossier qu'on avait en dézoomé.
+            // Lissage toujours actif en qualité maximale : c'est une image photo/satellite (pas du dessin
+            // avec des contours nets), donc le lissage bilinéaire reste préférable même au-delà du seuil
+            // natif (scale > nativeScale) : ça évite un crénelage moche plutôt qu'un flou plus doux.
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, offX, offY, IMG_W * scale, IMG_H * scale);
