@@ -7674,6 +7674,15 @@ const ZONE_TYPES = {
     'recherche':  { label: 'Zone de Recherche', color: '#4caf50' },
 };
 
+// Fonds de carte disponibles, sélectionnables via le menu déroulant dans la barre d'outils.
+// Les fichiers doivent être uploadés à la racine du repo, à côté de index.html.
+// 'atlas' est la carte par défaut (voir DEFAULT_MAP_LAYER_KEY plus bas).
+const MAP_LAYERS = {
+    'atlas':     { url: 'carte-gta-atlas.png',     label: '🗺️ Atlas' },
+    'satellite': { url: 'carte-gta-satellite.jpg', label: '🛰️ Satellite' },
+};
+const DEFAULT_MAP_LAYER_KEY = 'atlas';
+
 // Chargement depuis Supabase/localStorage
 async function loadCarteData() {
     try {
@@ -7782,7 +7791,12 @@ async function initCarte() {
         <!-- Carte : image haute résolution + canvas overlay Leaflet -->
         <div style="flex:1;position:relative;overflow:hidden;">
             <canvas id="gtaMap" style="width:100%;height:100%;position:absolute;top:0;left:0;z-index:2;background:#1a5c8a;touch-action:none;"></canvas>
-            <div style="position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:500;">
+            <div style="position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:500;align-items:flex-end;">
+                <select id="carteLayerSelect" onchange="switchCarteLayer(this.value)" title="Changer de fond de carte"
+                    style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:6px 8px;cursor:pointer;outline:none;">
+                    ${Object.keys(MAP_LAYERS).map(k => `<option value="${k}">${MAP_LAYERS[k].label}</option>`).join('')}
+                    <option value="__custom__">✏️ URL personnalisée...</option>
+                </select>
                 <button onclick="if(window._cvMap)_cvMap.zoomBy(1)" style="width:32px;height:32px;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;">+</button>
                 <button onclick="if(window._cvMap)_cvMap.zoomBy(-1)" style="width:32px;height:32px;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;">−</button>
             </div>
@@ -7832,6 +7846,12 @@ async function initCarte() {
         </div>
     </div>`;
 
+    // Sélectionne la bonne option du menu déroulant selon le fond de carte actuellement utilisé
+    const _layerKey = localStorage.getItem('cid_carte_layer_key') || DEFAULT_MAP_LAYER_KEY;
+    const _layerSelect = document.getElementById('carteLayerSelect');
+    if (_layerSelect) _layerSelect.value = MAP_LAYERS[_layerKey] ? _layerKey : '__custom__';
+    _currentLayer = _layerKey;
+
     // Leaflet overlay transparent pour les marqueurs
     setTimeout(() => _initLeafletMap(), 300);
 }
@@ -7850,11 +7870,15 @@ function _initLeafletMap() {
 
     // URL par défaut de la carte haute résolution (8000x8000, hébergée sur GitHub Pages à côté de index.html).
     // Modifiable à la volée par localStorage.setItem('cid_carte_image_url', '...') si besoin de la changer sans redéployer.
-    const _DEFAULT_MAP_URL = 'carte-gta-satellite.jpg';
+    const _DEFAULT_MAP_URL = 'carte-gta-atlas.png';
     const _customUrl = localStorage.getItem('cid_carte_image_url');
     const _mapSrc = _customUrl || _DEFAULT_MAP_URL;
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    // crossOrigin uniquement pour les vraies URLs http(s) externes (ex: imgbb) : nécessaire pour dessiner
+    // l'image sur le canvas sans le "tainter". En local (file://) ou en chemin relatif same-origin
+    // (GitHub Pages), le mettre bloque le chargement (chaque fichier local est une origine distincte
+    // aux yeux du navigateur) : on l'évite dans ce cas.
+    if (/^https?:\/\//i.test(_mapSrc)) img.crossOrigin = 'anonymous';
     let imgLoaded = false;
 
     let scale = 1;       // pixels écran par unité image
@@ -8378,14 +8402,30 @@ function promptCarteImage() {
     initCarte();
 }
 
+function switchCarteLayer(key) {
+    if (key === '__custom__') {
+        promptCarteImageUrl();
+        return;
+    }
+    const layer = MAP_LAYERS[key];
+    if (!layer) return;
+    localStorage.setItem('cid_carte_image_url', layer.url);
+    localStorage.setItem('cid_carte_layer_key', key);
+    _carteMap = null; window._cvMap = null;
+    document.getElementById('mainCarteContent').innerHTML = '';
+    initCarte();
+}
+
 function promptCarteImageUrl() {
     const current = localStorage.getItem('cid_carte_image_url') || '';
     const url = prompt('Colle URL de la carte GTA V haute resolution (imgbb, imgur...)\nEx: https://i.ibb.co/XXXX/map.jpg', current);
     if (url === null) return;
     if (url.trim()) {
         localStorage.setItem('cid_carte_image_url', url.trim());
+        localStorage.setItem('cid_carte_layer_key', '__custom__');
     } else {
         localStorage.removeItem('cid_carte_image_url');
+        localStorage.setItem('cid_carte_layer_key', DEFAULT_MAP_LAYER_KEY);
     }
     // Réinitialiser la carte
     _carteMap = null; window._cvMap = null;
