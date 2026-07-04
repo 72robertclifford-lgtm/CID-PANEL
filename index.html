@@ -1610,7 +1610,7 @@ async function doLogin() {
         localStorage.setItem('cid_session', JSON.stringify(currentUser));
         showPage('pageDossiers');
         renderUserHeader();
-        setTimeout(async () => { try { await loadOrgMembersFromSupabase(); } catch(e){} try { await loadDocEditors(); } catch(e){} try { await loadDocumentsFromSupabase(); } catch(e){} renderUserHeader(); renderDossiersList(); renderInlineOrg(); try { syncOrgGradesFromAccounts(); } catch(e){} const docTab = document.getElementById('tabDocuments'); if(docTab) docTab.style.display = getPermLevel() === 'procureur' ? 'none' : ''; const carteTab0 = document.getElementById('tabCarte'); if(carteTab0) carteTab0.style.display = getPermLevel() === 'procureur' ? 'none' : ''; try { const savedTab = sessionStorage.getItem('cid_active_tab'); if (savedTab && savedTab !== 'dossiers') setTimeout(() => switchMainTab(savedTab), 400); } catch(e){} }, 300);
+        setTimeout(async () => { try { await loadOrgMembersFromSupabase(); } catch(e){} try { await loadDocEditors(); } catch(e){} try { await loadDocumentsFromSupabase(); } catch(e){} try { await loadCarteData(); } catch(e){} renderUserHeader(); renderDossiersList(); renderInlineOrg(); try { syncOrgGradesFromAccounts(); } catch(e){} const docTab = document.getElementById('tabDocuments'); if(docTab) docTab.style.display = getPermLevel() === 'procureur' ? 'none' : ''; _applyCarteTabVisibility(); try { const savedTab = sessionStorage.getItem('cid_active_tab'); if (savedTab && savedTab !== 'dossiers') setTimeout(() => switchMainTab(savedTab), 400); } catch(e){} }, 300);
         setTimeout(() => checkPendingLink(), 300);
     } catch(e) { showMsg('loginMsg','Erreur: ' + e.message,'error'); }
 }
@@ -1908,7 +1908,7 @@ async function renderDossiersList() {
     const docTab = document.getElementById('tabDocuments');
     if (docTab) docTab.style.display = getPermLevel() === 'procureur' ? 'none' : '';
     const carteTab = document.getElementById('tabCarte');
-    if (carteTab) carteTab.style.display = getPermLevel() === 'procureur' ? 'none' : '';
+    if (carteTab) carteTab.style.display = _carteTabAllowed() ? '' : 'none';
 
     if (filteredList.length === 0) {
         container.innerHTML = `<div class="empty-state"><h2>Aucun dossier</h2><p>${canCreate?'Créez un nouveau dossier pour commencer':'Aucun dossier disponible'}</p></div>`;
@@ -4554,7 +4554,7 @@ async function saveMyProfile() {
 // ===== MAIN TAB NAVIGATION =====
 function switchMainTab(tab) {
     if (tab === 'documents' && getPermLevel() === 'procureur') return;
-    if (tab === 'carte' && getPermLevel() === 'procureur') return;
+    if (tab === 'carte' && !_carteTabAllowed()) return;
 
     const tabIdMap = { dossiers:'tabDossiers', carte:'tabCarte', orgchart:'tabOrgChart', documents:'tabDocuments', deposition:'tabDeposition', rapport:'tabRapport' };
     const contentIdMap = { dossiers:'tabContentDossiers', carte:'tabContentCarte', orgchart:'tabContentOrgChart', documents:'tabContentDocuments', deposition:'tabContentDeposition', rapport:'tabContentRapport' };
@@ -4595,7 +4595,7 @@ function switchMainTab(tab) {
     const docTab = document.getElementById('tabDocuments');
     if (docTab) docTab.style.display = getPermLevel() === 'procureur' ? 'none' : '';
     const carteTabEl = document.getElementById('tabCarte');
-    if (carteTabEl) carteTabEl.style.display = getPermLevel() === 'procureur' ? 'none' : '';
+    if (carteTabEl) carteTabEl.style.display = _carteTabAllowed() ? '' : 'none';
 }
 
 // ===== DROPDOWN NAV DOSSIERS / DÉPOSITION =====
@@ -5442,7 +5442,7 @@ async function switchToAccount(idx) {
         
         showPage('pageDossiers');
         renderUserHeader();
-        setTimeout(async () => { await loadOrgMembersFromSupabase(); renderDossiersList(); renderInlineOrg(); syncOrgGradesFromAccounts(); const docTab = document.getElementById('tabDocuments'); if(docTab) docTab.style.display = getPermLevel() === 'procureur' ? 'none' : ''; const carteTab2 = document.getElementById('tabCarte'); if(carteTab2) carteTab2.style.display = getPermLevel() === 'procureur' ? 'none' : ''; }, 300);
+        setTimeout(async () => { await loadOrgMembersFromSupabase(); try { await loadCarteData(); } catch(e){} renderDossiersList(); renderInlineOrg(); syncOrgGradesFromAccounts(); const docTab = document.getElementById('tabDocuments'); if(docTab) docTab.style.display = getPermLevel() === 'procureur' ? 'none' : ''; _applyCarteTabVisibility(); }, 300);
     } catch(e) { alert('Erreur: ' + e.message); }
 }
 
@@ -7658,6 +7658,7 @@ function exportInterroPDF(id) {
 let _carteMap = null;
 let _cartePoints = [];
 let _carteZones = [];
+let _carteAccessRestricted = false; // true = seuls Commanding/Supervisor CID/Master Investigator voient l'onglet Carte
 let _carteLoaded = false;
 let _carteMarkers = [];
 let _carteZoneLayers = [];
@@ -7697,7 +7698,9 @@ async function loadCarteData() {
             const data = JSON.parse(rows[0].value || '{}');
             _cartePoints = data.points || [];
             _carteZones = data.zones || [];
+            _carteAccessRestricted = !!data.restricted;
             localStorage.setItem('cid_carte', rows[0].value);
+            _applyCarteTabVisibility();
             return;
         }
     } catch(e) {}
@@ -7705,11 +7708,13 @@ async function loadCarteData() {
         const local = JSON.parse(localStorage.getItem('cid_carte') || '{}');
         _cartePoints = local.points || [];
         _carteZones = local.zones || [];
+        _carteAccessRestricted = !!local.restricted;
     } catch(e) {}
+    _applyCarteTabVisibility();
 }
 
 async function saveCarteData() {
-    const payload = JSON.stringify({ points: _cartePoints, zones: _carteZones });
+    const payload = JSON.stringify({ points: _cartePoints, zones: _carteZones, restricted: _carteAccessRestricted });
     localStorage.setItem('cid_carte', payload);
     try {
         await fetch(`${SUPABASE_URL}/rest/v1/org_settings?key=eq.cid_carte`, {
@@ -7721,6 +7726,45 @@ async function saveCarteData() {
             body: JSON.stringify({ key: 'cid_carte', value: payload })
         });
     } catch(e) {}
+}
+
+// Détermine si le grade courant peut voir/utiliser l'onglet Carte, en tenant compte de la restriction
+// éventuellement activée par Commanding/Supervisor CID/Master Investigator.
+function _carteTabAllowed() {
+    const p = getPermLevel();
+    if (p === 'procureur') return false; // toujours bloqué, comme avant
+    if (!_carteAccessRestricted) return true;
+    return p === 'supervisor'; // regroupe Commanding, Supervisor CID, Master Investigator
+}
+
+function _applyCarteTabVisibility() {
+    const carteTabEl = document.getElementById('tabCarte');
+    if (carteTabEl) carteTabEl.style.display = _carteTabAllowed() ? '' : 'none';
+    _renderCarteAccessToggleButton();
+}
+
+async function toggleCarteAccessRestriction() {
+    if (getPermLevel() !== 'supervisor') return; // sécurité : seuls Commanding/Supervisor CID/Master Investigator
+    _carteAccessRestricted = !_carteAccessRestricted;
+    await saveCarteData();
+    _applyCarteTabVisibility();
+}
+
+function _renderCarteAccessToggleButton() {
+    const btn = document.getElementById('carteAccessToggleBtn');
+    if (!btn) return;
+    btn.style.display = getPermLevel() === 'supervisor' ? 'inline-block' : 'none';
+    if (_carteAccessRestricted) {
+        btn.textContent = '🔒 Accès restreint';
+        btn.style.background = '#d32f2f';
+        btn.style.color = 'white';
+        btn.title = 'Accès restreint à Commanding/Supervisor CID/Master Investigator — cliquer pour ouvrir à tous';
+    } else {
+        btn.textContent = '🔓 Accès à tous';
+        btn.style.background = '#0a1628';
+        btn.style.color = '#C9A227';
+        btn.title = 'Accès ouvert à tous les grades — cliquer pour restreindre';
+    }
 }
 
 function _renderCartePointTypes() {
@@ -7800,6 +7844,7 @@ async function initCarte() {
             <!-- Boutons de fond de carte : cliquables directement, pas de menu déroulant -->
             <div id="carteLayerButtons" style="position:absolute;top:10px;left:10px;display:flex;gap:6px;z-index:500;">
                 ${Object.keys(MAP_LAYERS).map(k => `<button data-layer-key="${k}" onclick="switchCarteLayer('${k}')" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;">${MAP_LAYERS[k].label}</button>`).join('')}
+                ${getPermLevel() === 'supervisor' ? `<button id="carteAccessToggleBtn" onclick="toggleCarteAccessRestriction()" style="border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;"></button>` : ''}
             </div>
             <div style="position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:500;">
                 <button onclick="if(window._cvMap)_cvMap.zoomBy(1)" style="width:32px;height:32px;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;">+</button>
@@ -7829,9 +7874,16 @@ async function initCarte() {
             </select></div>
             <div style="margin-bottom:20px;"><label style="color:rgba(255,255,255,0.6);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px;">Description</label>
             <textarea id="cartePointDesc" placeholder="Informations supplémentaires..." style="width:100%;min-height:70px;padding:10px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(201,162,39,0.2);border-radius:9px;color:white;font-size:13px;box-sizing:border-box;outline:none;resize:none;font-family:inherit;"></textarea></div>
+            <div style="margin-bottom:20px;"><label style="color:rgba(255,255,255,0.6);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:6px;">Photos</label>
+            <div class="dropzone" ondrop="handleCartePointDrop(event)" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" onclick="this.querySelector('input').click()">
+                <div class="dropzone-text">📸 Glissez une ou plusieurs photos</div>
+                <div class="dropzone-sub">ou cliquez — uploadées sur imgbb</div>
+                <input type="file" accept="image/*" multiple style="display:none" onchange="handleCartePointFile(this)">
+            </div>
+            <div id="cartePointPhotosPreview" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;"></div></div>
             <div style="display:flex;gap:10px;">
                 <button onclick="confirmAddPoint()" style="flex:1;padding:11px;background:linear-gradient(135deg,#C9A227,#e0b830);color:#0D2B5E;border:none;border-radius:9px;cursor:pointer;font-weight:800;font-size:14px;">✅ Ajouter</button>
-                <button onclick="document.getElementById('carteModal').style.display='none'" style="padding:11px 16px;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.1);border-radius:9px;cursor:pointer;">Annuler</button>
+                <button onclick="document.getElementById('carteModal').style.display='none';_pendingCartePointPhotos=[];_renderCartePendingPhotos();" style="padding:11px 16px;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.1);border-radius:9px;cursor:pointer;">Annuler</button>
             </div>
         </div>
     </div>
@@ -7859,6 +7911,7 @@ async function initCarte() {
         btn.style.color = active ? '#0D2B5E' : '#C9A227';
     });
     _currentLayer = _layerKey;
+    _renderCarteAccessToggleButton();
 
     // Leaflet overlay transparent pour les marqueurs
     setTimeout(() => _initLeafletMap(), 300);
@@ -8145,6 +8198,8 @@ function _initLeafletMap() {
             document.getElementById('carteLng').value = ll.lng;
             document.getElementById('cartePointNom').value = '';
             document.getElementById('cartePointDesc').value = '';
+            _pendingCartePointPhotos = [];
+            _renderCartePendingPhotos();
             const m = document.getElementById('carteModal');
             m.style.display = 'flex';
             setTimeout(() => document.getElementById('cartePointNom').focus(), 100);
@@ -8305,6 +8360,40 @@ function setMapLayer(type) {
     _currentLayer = type;
 }
 
+// Photos en attente pour le point en cours de création (avant confirmation du formulaire)
+let _pendingCartePointPhotos = [];
+
+async function handleCartePointDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    const urls = await uploadFilesToImgbb(e.dataTransfer.files);
+    _pendingCartePointPhotos.push(...urls);
+    _renderCartePendingPhotos();
+}
+
+async function handleCartePointFile(input) {
+    const urls = await uploadFilesToImgbb(input.files);
+    _pendingCartePointPhotos.push(...urls);
+    _renderCartePendingPhotos();
+    input.value = '';
+}
+
+function removeCartePendingPhoto(idx) {
+    _pendingCartePointPhotos.splice(idx, 1);
+    _renderCartePendingPhotos();
+}
+
+function _renderCartePendingPhotos() {
+    const el = document.getElementById('cartePointPhotosPreview');
+    if (!el) return;
+    el.innerHTML = _pendingCartePointPhotos.map((url, i) =>
+        '<div style="position:relative;">' +
+        '<img src="' + url + '" style="width:52px;height:52px;object-fit:cover;border-radius:6px;border:1px solid rgba(201,162,39,0.3);">' +
+        '<button onclick="removeCartePendingPhoto(' + i + ')" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#d32f2f;color:white;border:none;cursor:pointer;font-size:11px;line-height:1;padding:0;">✕</button>' +
+        '</div>'
+    ).join('');
+}
+
 function confirmAddPoint() {
     const lat = parseFloat(document.getElementById('carteLat').value);
     const lng = parseFloat(document.getElementById('carteLng').value);
@@ -8312,10 +8401,12 @@ function confirmAddPoint() {
     const type = document.getElementById('cartePointType').value;
     const desc = document.getElementById('cartePointDesc').value.trim();
     if (!nom) { alert('Entrez un nom'); return; }
-    const point = { id: Date.now().toString(), lat, lng, nom, type, desc, by: currentUser?.username || '', at: new Date().toLocaleDateString('fr-FR') };
+    const point = { id: Date.now().toString(), lat, lng, nom, type, desc, photos: [..._pendingCartePointPhotos], by: currentUser?.username || '', at: new Date().toLocaleDateString('fr-FR') };
     _cartePoints.push(point);
     saveCarteData();
     document.getElementById('carteModal').style.display = 'none';
+    _pendingCartePointPhotos = [];
+    _renderCartePendingPhotos();
     renderCarteMarkers();
     renderCartePointsList();
 }
