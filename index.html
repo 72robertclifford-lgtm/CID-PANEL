@@ -7876,7 +7876,7 @@ async function initCarte() {
             <div id="carteLayerButtons" style="position:absolute;top:46px;left:10px;display:flex;gap:6px;z-index:500;">
                 ${Object.keys(MAP_LAYERS).map(k => `<button data-layer-key="${k}" onclick="switchCarteLayer('${k}')" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;">${MAP_LAYERS[k].label}</button>`).join('')}
                 <button id="carte3DToggleBtn" onclick="toggleCarte3DView()" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;">🧊 Terrain 3D</button>
-                <button onclick="createRondeAutomatique()" title="Crée automatiquement une ronde passant par tous les points visibles" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;">🔄 Ronde automatique</button>
+                <button id="carteItineraireBtn" onclick="toggleItineraireMode()" style="display:none;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;">✏️ Dessiner l'itinéraire</button>
                 ${getPermLevel() === 'supervisor' ? `<button id="carteAccessToggleBtn" onclick="toggleCarteAccessRestriction()" style="border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;"></button>` : ''}
             </div>
             <div style="position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:500;">
@@ -7892,6 +7892,17 @@ async function initCarte() {
                 </div>
             </div>
             <!-- Indicateur mode itinéraire -->
+            <div id="itineraireStatus" style="display:none;position:absolute;top:92px;left:10px;z-index:600;background:#0f1628;border:2px solid #C9A227;padding:12px 20px;border-radius:12px;color:#C9A227;font-size:14px;font-weight:800;text-align:left;box-shadow:0 8px 30px rgba(0,0,0,0.5);max-width:280px;">
+                🧭 Clique sur les points à relier (<span id="itineraireCount">0</span> sélectionné(s))
+                <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;font-weight:600;cursor:pointer;">
+                    <input type="checkbox" id="itineraireTriProximite" checked style="cursor:pointer;">
+                    Trier du plus proche au plus loin
+                </label>
+                <div style="margin-top:8px;display:flex;gap:8px;justify-content:flex-start;">
+                    <button onclick="finishItineraire()" style="background:#C9A227;color:#0D2B5E;border:none;padding:7px 16px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:800;">✅ Terminer</button>
+                    <button onclick="cancelItineraire()" style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);padding:7px 14px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:700;">✕ Annuler</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -7946,6 +7957,8 @@ async function initCarte() {
     });
     _currentLayer = _layerKey;
     _renderCarteAccessToggleButton();
+    const _itinBtn = document.getElementById('carteItineraireBtn');
+    if (_itinBtn) _itinBtn.style.display = (_currentLayer === 'itineraire') ? '' : 'none';
 
     // Leaflet overlay transparent pour les marqueurs
     setTimeout(() => _initLeafletMap(), 300);
@@ -8128,7 +8141,8 @@ function _initLeafletMap() {
 
         // Itinéraires enregistrés : lignes reliant les points dans l'ordre choisi, style GPS GTA V
         // (ligne jaune avec un liseré sombre pour se détacher nettement de n'importe quel fond de carte)
-        _carteItineraires.forEach(it => {
+        // N'apparaissent que sur la couche "Itinéraire" : pas de dessin sur Atlas/Satellite.
+        if (_currentLayer === 'itineraire') _carteItineraires.forEach(it => {
             const pts = it.pointIds.map(id => _cartePoints.find(p => p.id === id)).filter(Boolean);
             if (pts.length < 2) return;
             // Utilise le trajet suivant les routes s'il a été calculé, sinon ligne droite en secours
@@ -8558,6 +8572,7 @@ function cancelZone() {
 }
 
 function toggleItineraireMode() {
+    if (_currentLayer !== 'itineraire') return; // dessin réservé à la couche "Itinéraire"
     _drawingItineraire = !_drawingItineraire;
     const btn = document.getElementById('carteItineraireBtn');
     const banner = document.getElementById('itineraireStatus');
@@ -8824,7 +8839,7 @@ function renderCarteItinerairesList() {
     const wrap = document.getElementById('carteItinerairesDropdown');
     const sel = document.getElementById('carteItinerairesSelect');
     if (!wrap || !sel) return;
-    if (!_carteItineraires.length) { wrap.style.display = 'none'; sel.innerHTML = ''; return; }
+    if (!_carteItineraires.length || _currentLayer !== 'itineraire') { wrap.style.display = 'none'; sel.innerHTML = ''; return; }
     wrap.style.display = 'flex';
     const prevValue = sel.value;
     sel.innerHTML = _carteItineraires.map(it => `<option value="${it.id}">🧭 ${it.nom} (${it.pointIds.length} pts)</option>`).join('');
@@ -8932,6 +8947,7 @@ function promptCarteImage() {
 function switchCarteLayer(key) {
     const layer = MAP_LAYERS[key];
     if (!layer) return;
+    _drawingItineraire = false; _itineraireSelection = []; // le mode dessin ne survit pas à un changement de couche
     localStorage.setItem('cid_carte_image_url', layer.url);
     localStorage.setItem('cid_carte_layer_key', key);
     _carteMap = null; window._cvMap = null;
