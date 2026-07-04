@@ -7662,6 +7662,7 @@ function exportInterroPDF(id) {
 let _carteMap = null;
 let _cartePoints = [];
 let _carteZones = [];
+let _carteItineraires = []; // [{id, nom, pointIds:[...], by, at}]
 let _carteAccessRestricted = false; // true = seuls Commanding/Supervisor CID/Master Investigator voient l'onglet Carte
 let _carteLoaded = false;
 let _carteMarkers = [];
@@ -7670,6 +7671,8 @@ let _activeCategory = 'all';
 let _drawingZone = false;
 let _zonePoints = [];
 let _tempPolyline = null;
+let _drawingItineraire = false; // mode "en train de construire un itinéraire" : clic sur points existants
+let _itineraireSelection = []; // liste ordonnée des points cliqués pendant la construction
 
 const POINT_TYPES = {
     'recolte':    { label: 'Lieu de récolte',      icon: '🌿', color: '#4caf50' },
@@ -7702,6 +7705,7 @@ async function loadCarteData() {
             const data = JSON.parse(rows[0].value || '{}');
             _cartePoints = data.points || [];
             _carteZones = data.zones || [];
+            _carteItineraires = data.itineraires || [];
             _carteAccessRestricted = !!data.restricted;
             localStorage.setItem('cid_carte', rows[0].value);
             _applyCarteTabVisibility();
@@ -7712,13 +7716,14 @@ async function loadCarteData() {
         const local = JSON.parse(localStorage.getItem('cid_carte') || '{}');
         _cartePoints = local.points || [];
         _carteZones = local.zones || [];
+        _carteItineraires = local.itineraires || [];
         _carteAccessRestricted = !!local.restricted;
     } catch(e) {}
     _applyCarteTabVisibility();
 }
 
 async function saveCarteData() {
-    const payload = JSON.stringify({ points: _cartePoints, zones: _carteZones, restricted: _carteAccessRestricted });
+    const payload = JSON.stringify({ points: _cartePoints, zones: _carteZones, itineraires: _carteItineraires, restricted: _carteAccessRestricted });
     localStorage.setItem('cid_carte', payload);
     try {
         await fetch(`${SUPABASE_URL}/rest/v1/org_settings?key=eq.cid_carte`, {
@@ -7847,7 +7852,9 @@ async function initCarte() {
                 ${_renderCarteZoneTypes()}
             </div>
 
+            ${getPermLevel() === 'supervisor' ? `<div style="padding:0 14px;"><button onclick="deleteAllCartePoints()" style="width:100%;background:rgba(211,47,47,0.15);color:#ef5350;border:1px solid rgba(211,47,47,0.4);padding:7px;border-radius:7px;cursor:pointer;font-size:11px;font-weight:700;">🗑 Supprimer tous les points</button></div>` : ''}
             <div style="padding:12px 14px;flex:1;overflow-y:auto;" id="cartePointsList"></div>
+            <div style="padding:0 14px;" id="carteItinerairesList"></div>
 
             <div style="padding:12px 14px;border-top:1px solid rgba(201,162,39,0.2);">
                 <div style="color:rgba(255,255,255,0.4);font-size:9px;text-align:center;">
@@ -7865,6 +7872,8 @@ async function initCarte() {
             <div id="carteLayerButtons" style="position:absolute;top:10px;left:10px;display:flex;gap:6px;z-index:500;">
                 ${Object.keys(MAP_LAYERS).map(k => `<button data-layer-key="${k}" onclick="switchCarteLayer('${k}')" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;">${MAP_LAYERS[k].label}</button>`).join('')}
                 <button id="carte3DToggleBtn" onclick="toggleCarte3DView()" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;">🧊 Terrain 3D</button>
+                <button id="carteItineraireBtn" onclick="toggleItineraireMode()" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;">🧭 Itinéraire</button>
+                <button onclick="createRondeAutomatique()" title="Crée automatiquement une ronde passant par tous les points visibles" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;">🔄 Ronde automatique</button>
                 ${getPermLevel() === 'supervisor' ? `<button id="carteAccessToggleBtn" onclick="toggleCarteAccessRestriction()" style="border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;"></button>` : ''}
             </div>
             <div style="position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:500;">
@@ -7877,6 +7886,18 @@ async function initCarte() {
                 <div style="margin-top:8px;display:flex;gap:8px;justify-content:flex-start;">
                     <button onclick="finishZone()" style="background:#C9A227;color:#0D2B5E;border:none;padding:7px 16px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:800;">✅ Terminer</button>
                     <button onclick="cancelZone()" style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);padding:7px 14px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:700;">✕ Annuler</button>
+                </div>
+            </div>
+            <!-- Indicateur mode itinéraire -->
+            <div id="itineraireStatus" style="display:none;position:absolute;top:56px;left:10px;z-index:600;background:#0f1628;border:2px solid #C9A227;padding:12px 20px;border-radius:12px;color:#C9A227;font-size:14px;font-weight:800;text-align:left;box-shadow:0 8px 30px rgba(0,0,0,0.5);max-width:280px;">
+                🧭 Clique sur les points à relier (<span id="itineraireCount">0</span> sélectionné(s))
+                <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;font-weight:600;cursor:pointer;">
+                    <input type="checkbox" id="itineraireTriProximite" checked style="cursor:pointer;">
+                    Trier du plus proche au plus loin
+                </label>
+                <div style="margin-top:8px;display:flex;gap:8px;justify-content:flex-start;">
+                    <button onclick="finishItineraire()" style="background:#C9A227;color:#0D2B5E;border:none;padding:7px 16px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:800;">✅ Terminer</button>
+                    <button onclick="cancelItineraire()" style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);padding:7px 14px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:700;">✕ Annuler</button>
                 </div>
             </div>
         </div>
@@ -7947,7 +7968,7 @@ let _tileLayer = null;
 function _initLeafletMap() {
     const canvas = document.getElementById('gtaMap');
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const IMG_W = 1375, IMG_H = 1291; // largeur/hauteur logique de l'image (lng=x jusqu'à 1375, lat=y jusqu'à 1291)
 
     // URL par défaut de la carte haute résolution (8000x8000, hébergée sur GitHub Pages à côté de index.html).
@@ -7982,6 +8003,7 @@ function _initLeafletMap() {
         fitToScreen();
         console.log('[Carte GTA] Image chargée:', _mapSrc, '| Résolution native:', img.naturalWidth + 'x' + img.naturalHeight, '| minScale:', minScale, '| maxScale:', maxScale);
         draw();
+        _buildRoadGrid(img, IMG_W, IMG_H);
     };
     img.onerror = () => {
         console.error('[Carte GTA] Échec de chargement de l\'image :', _mapSrc, '- fallback sur l\'ancienne image basse résolution.');
@@ -8112,6 +8134,67 @@ function _initLeafletMap() {
             });
         }
 
+        // Itinéraires enregistrés : lignes reliant les points dans l'ordre choisi
+        _carteItineraires.forEach(it => {
+            const pts = it.pointIds.map(id => _cartePoints.find(p => p.id === id)).filter(Boolean);
+            if (pts.length < 2) return;
+            // Utilise le trajet suivant les routes s'il a été calculé, sinon ligne droite en secours
+            const routeLL = (it.route && it.route.length > 1) ? it.route : pts.map(p => [p.lat, p.lng]);
+            ctx.beginPath();
+            routeLL.forEach((p, i) => {
+                const s = latLngToScreen(p[0], p[1]);
+                if (i === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+            });
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.strokeStyle = '#00e5ff';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([]);
+            ctx.stroke();
+            // Flèches de direction régulièrement espacées le long du trajet
+            const arrowEvery = Math.max(4, Math.floor(routeLL.length / (pts.length * 3)));
+            for (let i = arrowEvery; i < routeLL.length - 1; i += arrowEvery) {
+                const a = latLngToScreen(routeLL[i-1][0], routeLL[i-1][1]);
+                const b = latLngToScreen(routeLL[i][0], routeLL[i][1]);
+                const ang = Math.atan2(b.y - a.y, b.x - a.x);
+                ctx.save();
+                ctx.translate(b.x, b.y); ctx.rotate(ang);
+                ctx.beginPath();
+                ctx.moveTo(-6, -5); ctx.lineTo(6, 0); ctx.lineTo(-6, 5); ctx.closePath();
+                ctx.fillStyle = '#00e5ff';
+                ctx.fill();
+                ctx.restore();
+            }
+        });
+
+        // Itinéraire en cours de construction (aperçu pointillé doré)
+        if (_drawingItineraire && _itineraireSelection.length > 0) {
+            const pts = _itineraireSelection.map(id => _cartePoints.find(p => p.id === id)).filter(Boolean);
+            if (pts.length > 0) {
+                ctx.beginPath();
+                pts.forEach((p, i) => {
+                    const s = latLngToScreen(p.lat, p.lng);
+                    if (i === 0) ctx.moveTo(s.x, s.y); else ctx.lineTo(s.x, s.y);
+                });
+                ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+                ctx.strokeStyle = '#C9A227';
+                ctx.lineWidth = 3;
+                ctx.setLineDash([8, 6]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                pts.forEach((p, i) => {
+                    const s = latLngToScreen(p.lat, p.lng);
+                    ctx.beginPath();
+                    ctx.arc(s.x, s.y, 9, 0, Math.PI * 2);
+                    ctx.fillStyle = '#C9A227';
+                    ctx.fill();
+                    ctx.font = 'bold 11px sans-serif';
+                    ctx.fillStyle = '#0D2B5E';
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText(String(i + 1), s.x, s.y);
+                });
+            }
+        }
+
         // Points
         _cartePoints.forEach(pt => {
             if (pt._hidden) return;
@@ -8237,6 +8320,16 @@ function _initLeafletMap() {
             return;
         }
 
+        if (_drawingItineraire) {
+            const pt = findPointAt(px, py);
+            if (pt && !_itineraireSelection.includes(pt.id)) {
+                _itineraireSelection.push(pt.id);
+                document.getElementById('itineraireCount').textContent = _itineraireSelection.length;
+                draw();
+            }
+            return;
+        }
+
         // Clic simple : ouvrir popup point/zone sous le curseur
         const pt = findPointAt(px, py);
         if (pt) { _openCartePopup(pt, 'point', px, py); return; }
@@ -8292,6 +8385,7 @@ function _initLeafletMap() {
         },
         redraw: draw,
         invalidateSize() { fitToScreen(); draw(); },
+        ensureRoadGrid() { if (!_roadGrid && imgLoaded) _buildRoadGrid(img, IMG_W, IMG_H); },
     };
     _carteMap = window._cvMap; // conserve la référence utilisée ailleurs dans le code
 
@@ -8299,6 +8393,7 @@ function _initLeafletMap() {
     draw();
     renderCarteMarkers();
     renderCartePointsList();
+    renderCarteItinerairesList();
 }
 
 function _pointInPolygon(lat, lng, points) {
@@ -8430,6 +8525,7 @@ function confirmAddPoint() {
     _renderCartePendingPhotos();
     renderCarteMarkers();
     renderCartePointsList();
+    renderCarteItinerairesList();
 }
 
 function finishZone() {
@@ -8441,6 +8537,244 @@ function cancelZone() {
     _drawingZone = false; _zonePoints = [];
     document.getElementById('drawingStatus').style.display = 'none';
     if (window._cvMap) _cvMap.redraw();
+}
+
+function toggleItineraireMode() {
+    _drawingItineraire = !_drawingItineraire;
+    const btn = document.getElementById('carteItineraireBtn');
+    const banner = document.getElementById('itineraireStatus');
+    if (_drawingItineraire) {
+        _itineraireSelection = [];
+        document.getElementById('itineraireCount').textContent = '0';
+        if (banner) banner.style.display = 'block';
+        if (btn) { btn.style.background = '#C9A227'; btn.style.color = '#0D2B5E'; }
+    } else {
+        _itineraireSelection = [];
+        if (banner) banner.style.display = 'none';
+        if (btn) { btn.style.background = '#0a1628'; btn.style.color = '#C9A227'; }
+    }
+    if (window._cvMap) _cvMap.redraw();
+}
+
+// Trie une liste de points par plus proche voisin : part du premier, puis choisit à chaque
+// étape le point restant le plus proche du dernier ajouté (algorithme glouton, simple et rapide).
+// ===== Suivi approximatif des routes pour les itinéraires =====
+// On ne peut pas extraire un vrai réseau routier vectoriel du jeu (pas d'accès aux données du jeu),
+// mais on peut analyser les pixels de la carte Atlas : les routes y sont dessinées en blanc/crème,
+// nettement plus clair que la forêt (vert foncé) ou la mer (bleu). On construit une grille de "coût
+// de déplacement" (moins cher sur les routes, plus cher en forêt/montagne, très cher sur l'eau),
+// puis on calcule le chemin le moins coûteux avec un A* — comme un GPS simplifié basé sur l'image.
+let _roadGrid = null; // { RES, costs: Float32Array, IMG_W, IMG_H }
+
+function _buildRoadGrid(img, IMG_W, IMG_H) {
+    try {
+        const RES = 180; // résolution de la grille de recherche de chemin (compromis précision/vitesse)
+        const canvas = document.createElement('canvas');
+        canvas.width = RES; canvas.height = RES;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, RES, RES);
+        const data = ctx.getImageData(0, 0, RES, RES).data;
+        const costs = new Float32Array(RES * RES);
+        for (let i = 0; i < RES * RES; i++) {
+            const r = data[i*4], g = data[i*4+1], b = data[i*4+2];
+            const brightness = (r + g + b) / 3;
+            const isWater = b > r + 20 && b > g + 10;
+            const isGreen = g > r + 15 && g > b + 15;
+            let cost;
+            if (isWater) cost = 35;
+            else if (isGreen) cost = 9;
+            else if (brightness > 195) cost = 1;   // routes/lignes claires
+            else if (brightness > 140) cost = 2.5; // rues en ville / zones claires
+            else cost = 6;                          // désert foncé, relief, etc.
+            costs[i] = cost;
+        }
+        _roadGrid = { RES, costs, IMG_W, IMG_H };
+    } catch(e) { console.warn('[Carte GTA] Impossible de construire la grille de routes:', e); _roadGrid = null; }
+}
+
+// A* sur la grille de coût. Retourne un tableau de [lat,lng] du point A au point B,
+// ou null si la grille n'est pas prête (dans ce cas on retombe sur une ligne droite).
+function _astarPath(latA, lngA, latB, lngB) {
+    if (!_roadGrid) return null;
+    const { RES, costs, IMG_W, IMG_H } = _roadGrid;
+    const toGrid = (lat, lng) => ({ gx: Math.max(0, Math.min(RES-1, Math.round((lng/IMG_W)*RES))), gy: Math.max(0, Math.min(RES-1, Math.round((lat/IMG_H)*RES))) });
+    const start = toGrid(latA, lngA), goal = toGrid(latB, lngB);
+    const idx = (x,y) => y*RES+x;
+    const h = (x,y) => Math.hypot(x-goal.gx, y-goal.gy);
+
+    const gScore = new Float32Array(RES*RES).fill(Infinity);
+    const cameFrom = new Int32Array(RES*RES).fill(-1);
+    const closed = new Uint8Array(RES*RES);
+    gScore[idx(start.gx,start.gy)] = 0;
+
+    // File de priorité simple (tableau + tri) : la grille reste petite (180x180), suffisant en pratique
+    let open = [{ x: start.gx, y: start.gy, f: h(start.gx, start.gy) }];
+    const neighbors = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
+    let iterations = 0;
+    const maxIterations = RES * RES * 4;
+
+    while (open.length && iterations++ < maxIterations) {
+        open.sort((a,b) => a.f - b.f);
+        const cur = open.shift();
+        const ci = idx(cur.x, cur.y);
+        if (closed[ci]) continue;
+        closed[ci] = 1;
+        if (cur.x === goal.gx && cur.y === goal.gy) break;
+
+        for (const [dx, dy] of neighbors) {
+            const nx = cur.x + dx, ny = cur.y + dy;
+            if (nx < 0 || ny < 0 || nx >= RES || ny >= RES) continue;
+            const ni = idx(nx, ny);
+            if (closed[ni]) continue;
+            const stepCost = (dx !== 0 && dy !== 0 ? 1.414 : 1) * costs[ni];
+            const tentative = gScore[ci] + stepCost;
+            if (tentative < gScore[ni]) {
+                gScore[ni] = tentative;
+                cameFrom[ni] = ci;
+                open.push({ x: nx, y: ny, f: tentative + h(nx, ny) });
+            }
+        }
+    }
+
+    const goalIdx = idx(goal.gx, goal.gy);
+    if (cameFrom[goalIdx] === -1 && goalIdx !== idx(start.gx, start.gy)) return null; // pas de chemin trouvé
+
+    // Reconstruit le chemin en remontant cameFrom, puis reconvertit en lat/lng
+    const path = [];
+    let cur = goalIdx;
+    let guard = 0;
+    while (cur !== -1 && guard++ < RES*RES) {
+        const x = cur % RES, y = Math.floor(cur / RES);
+        path.push([ (y/RES) * IMG_H, (x/RES) * IMG_W ]);
+        if (x === start.gx && y === start.gy) break;
+        cur = cameFrom[cur];
+    }
+    path.reverse();
+    return path;
+}
+
+// Calcule le trajet complet (suivant les routes autant que possible) reliant une liste ordonnée
+// de points, en enchaînant un A* entre chaque paire consécutive.
+function _computeRouteForPoints(pointIds) {
+    const pts = pointIds.map(id => _cartePoints.find(p => p.id === id)).filter(Boolean);
+    if (pts.length < 2) return null;
+    let route = [[pts[0].lat, pts[0].lng]];
+    for (let i = 0; i < pts.length - 1; i++) {
+        const seg = _astarPath(pts[i].lat, pts[i].lng, pts[i+1].lat, pts[i+1].lng);
+        if (seg && seg.length > 1) {
+            route = route.concat(seg.slice(1));
+        } else {
+            route.push([pts[i+1].lat, pts[i+1].lng]); // pas de chemin trouvé : ligne droite en secours
+        }
+    }
+    return route;
+}
+
+function _sortPointsByProximity(pointIds) {
+    const pts = pointIds.map(id => _cartePoints.find(p => p.id === id)).filter(Boolean);
+    if (pts.length < 2) return pointIds;
+    const remaining = pts.slice(1);
+    const ordered = [pts[0]];
+    let current = pts[0];
+    while (remaining.length) {
+        let bestIdx = 0, bestDist = Infinity;
+        remaining.forEach((p, i) => {
+            const d = Math.hypot(p.lat - current.lat, p.lng - current.lng);
+            if (d < bestDist) { bestDist = d; bestIdx = i; }
+        });
+        current = remaining.splice(bestIdx, 1)[0];
+        ordered.push(current);
+    }
+    return ordered.map(p => p.id);
+}
+
+function deleteAllCartePoints() {
+    if (!_canDeleteCarteItem()) { alert('Seuls Commanding, Supervisor CID et Master Investigator peuvent faire ça.'); return; }
+    if (!_cartePoints.length) { alert('Il n\'y a aucun point à supprimer.'); return; }
+    if (!confirm(`Supprimer les ${_cartePoints.length} points de la carte ? Cette action est irréversible.`)) return;
+    _cartePoints = [];
+    saveCarteData();
+    renderCarteMarkers();
+    renderCartePointsList();
+    renderCarteItinerairesList();
+    if (window._cvMap) _cvMap.redraw();
+}
+
+function createRondeAutomatique() {
+    const visibles = _cartePoints.filter(p => !p._hidden);
+    if (visibles.length < 2) { alert('Il faut au moins 2 points visibles sur la carte pour créer une ronde.'); return; }
+    const nom = prompt('Nom de cette ronde :', 'Ronde automatique ' + (_carteItineraires.length + 1));
+    if (nom === null) return;
+    if (window._cvMap) window._cvMap.ensureRoadGrid();
+    // Trie tous les points visibles par proximité, puis referme la boucle en revenant au point de départ
+    const ordered = _sortPointsByProximity(visibles.map(p => p.id));
+    const looped = [...ordered, ordered[0]];
+    _carteItineraires.push({
+        id: Date.now().toString(),
+        nom: nom.trim() || 'Sans nom',
+        pointIds: looped,
+        route: _computeRouteForPoints(looped),
+        by: currentUser?.username || '',
+        at: new Date().toLocaleDateString('fr-FR')
+    });
+    saveCarteData();
+    renderCarteItinerairesList();
+    if (window._cvMap) _cvMap.redraw();
+}
+
+function finishItineraire() {
+    if (_itineraireSelection.length < 2) { alert('Sélectionne au moins 2 points'); return; }
+    const nom = prompt('Nom de cet itinéraire :', 'Itinéraire ' + (_carteItineraires.length + 1));
+    if (nom === null) return; // annulé
+    const trier = document.getElementById('itineraireTriProximite')?.checked;
+    const pointIds = trier ? _sortPointsByProximity(_itineraireSelection) : [..._itineraireSelection];
+    if (window._cvMap) window._cvMap.ensureRoadGrid();
+    _carteItineraires.push({
+        id: Date.now().toString(),
+        nom: nom.trim() || 'Sans nom',
+        pointIds,
+        route: _computeRouteForPoints(pointIds), // trajet suivant approximativement les routes
+        by: currentUser?.username || '',
+        at: new Date().toLocaleDateString('fr-FR')
+    });
+    saveCarteData();
+    _drawingItineraire = false;
+    _itineraireSelection = [];
+    document.getElementById('itineraireStatus').style.display = 'none';
+    const btn = document.getElementById('carteItineraireBtn');
+    if (btn) { btn.style.background = '#0a1628'; btn.style.color = '#C9A227'; }
+    renderCarteItinerairesList();
+    if (window._cvMap) _cvMap.redraw();
+}
+
+function cancelItineraire() {
+    _drawingItineraire = false;
+    _itineraireSelection = [];
+    document.getElementById('itineraireStatus').style.display = 'none';
+    const btn = document.getElementById('carteItineraireBtn');
+    if (btn) { btn.style.background = '#0a1628'; btn.style.color = '#C9A227'; }
+    if (window._cvMap) _cvMap.redraw();
+}
+
+function deleteItineraire(id) {
+    if (!_canDeleteCarteItem()) { alert('Seuls Commanding, Supervisor CID et Master Investigator peuvent supprimer un itinéraire.'); return; }
+    if (!confirm('Supprimer cet itinéraire ?')) return;
+    _carteItineraires = _carteItineraires.filter(it => it.id !== id);
+    saveCarteData();
+    renderCarteItinerairesList();
+    if (window._cvMap) _cvMap.redraw();
+}
+
+function renderCarteItinerairesList() {
+    const el = document.getElementById('carteItinerairesList');
+    if (!el) return;
+    if (!_carteItineraires.length) { el.innerHTML = ''; return; }
+    const canDelete = _canDeleteCarteItem();
+    el.innerHTML = '<div style="color:#C9A227;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px;">Itinéraires</div>' +
+        _carteItineraires.map(it => `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:rgba(255,255,255,0.05);border-radius:6px;margin-bottom:4px;font-size:12px;color:white;">
+            <span>🧭 ${it.nom} <small style="color:#888">(${it.pointIds.length} pts)</small></span>
+            ${canDelete ? `<button onclick="deleteItineraire('${it.id}')" style="background:none;border:none;color:#ef5350;cursor:pointer;font-size:13px;">🗑</button>` : ''}
+        </div>`).join('');
 }
 
 function confirmAddZone() {
@@ -8503,6 +8837,7 @@ function deleteCartePoint(id) {
     _closeCartePopup();
     renderCarteMarkers();
     renderCartePointsList();
+    renderCarteItinerairesList();
 }
 
 function deleteCarteZone(id) {
@@ -8558,13 +8893,13 @@ function toggleCarte3DView() {
         if (canvas2D) canvas2D.style.display = 'none';
         if (container3D) container3D.style.display = 'block';
         if (zoomButtons) zoomButtons.style.display = 'none'; // le zoom 2D ne s'applique pas à la vue 3D
-        if (btn) { btn.textContent = '🗺️ Retour 2D'; btn.style.background = '#C9A227'; btn.style.color = '#0D2B5E'; }
+        // Une fois en 3D, on retire le bouton : pas de retour possible vers la 2D
+        if (btn) btn.remove();
         _init3DTerrain();
     } else {
         if (canvas2D) canvas2D.style.display = '';
         if (container3D) container3D.style.display = 'none';
         if (zoomButtons) zoomButtons.style.display = '';
-        if (btn) { btn.textContent = '🧊 Terrain 3D'; btn.style.background = '#0a1628'; btn.style.color = '#C9A227'; }
         _destroy3DTerrain();
     }
 }
@@ -8582,11 +8917,11 @@ function _destroy3DTerrain() {
 }
 
 // Génère des immeubles stylisés (pas les vrais bâtiments du jeu, impossible sans extraire les
-// assets de GTA V) : on analyse les pixels de la carte pour repérer les zones urbaines (gris,
-// peu saturé, ni vert=végétation ni bleu=mer) et on y place des blocs 3D de hauteur aléatoire.
-// Donne une impression de skyline en ville sans reproduire la géométrie réelle du jeu.
+// assets de GTA V) : on analyse les pixels de la carte Atlas pour repérer les îlots urbains
+// (blocs gris clair/blancs distincts du gris plus foncé des routes) et on y place des blocs 3D
+// de hauteur aléatoire. Donne une impression de skyline en ville sans reproduire la géométrie réelle.
 function _addProceduralBuildings(scene, colorDataUrl, heightDataUrl, SIZE) {
-    const GRID = 260; // résolution de la grille d'analyse (indépendante du maillage du terrain)
+    const GRID = 420; // résolution de la grille d'analyse : plus fin pour capter les contours des îlots de l'Atlas
     const colorImg = new Image();
     const heightImg = new Image();
     let ready = 0;
@@ -8595,7 +8930,7 @@ function _addProceduralBuildings(scene, colorDataUrl, heightDataUrl, SIZE) {
         if (ready < 2) return;
         const canvas = document.createElement('canvas');
         canvas.width = GRID; canvas.height = GRID;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         ctx.drawImage(colorImg, 0, 0, GRID, GRID);
         const colorData = ctx.getImageData(0, 0, GRID, GRID).data;
         ctx.clearRect(0, 0, GRID, GRID);
@@ -8604,44 +8939,83 @@ function _addProceduralBuildings(scene, colorDataUrl, heightDataUrl, SIZE) {
 
         const cellSize = SIZE / GRID;
         const geo = new THREE.BoxGeometry(1, 1, 1);
-        const mat = new THREE.MeshStandardMaterial({ color: 0xb9c2cc, roughness: 0.85, metalness: 0.05 });
+        // 3 teintes différentes pour casser l'effet "usine à blocs identiques"
+        const palettes = [0xd6d2c4, 0xb9c2cc, 0xc9b89a];
+        const mats = palettes.map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.82, metalness: 0.04 }));
         const maxCount = GRID * GRID;
-        const mesh = new THREE.InstancedMesh(geo, mat, maxCount);
+        const meshes = mats.map(m => new THREE.InstancedMesh(geo, m, maxCount));
+        meshes.forEach(m => { m.castShadow = true; m.receiveShadow = true; });
+        const roofMat = new THREE.MeshStandardMaterial({ color: 0x8a8f96, roughness: 0.7 });
+        const roofMesh = new THREE.InstancedMesh(geo, roofMat, maxCount);
+        roofMesh.castShadow = true;
         const dummy = new THREE.Object3D();
-        let count = 0;
+        const counts = [0, 0, 0];
+        let roofCount = 0;
 
-        for (let gy = 0; gy < GRID; gy += 2) {
-            for (let gx = 0; gx < GRID; gx += 2) {
+        // Zone urbaine au sens large (pour ne jamais poser de bâtiment hors ville) : gris/beige,
+        // peu saturé, en zone basse/côtière (les villes GTA V ne sont jamais en montagne).
+        function isUrbanZone(gx, gy) {
+            if (gx < 0 || gy < 0 || gx >= GRID || gy >= GRID) return false;
+            const i = (gy * GRID + gx) * 4;
+            const r = colorData[i], g = colorData[i + 1], b = colorData[i + 2];
+            const hGray = heightData[i];
+            const maxC = Math.max(r, g, b), minC = Math.min(r, g, b);
+            const sat = maxC === 0 ? 0 : (maxC - minC) / maxC;
+            const brightness = (r + g + b) / 3;
+            const isWater = b > r + 20 && b > g + 10;
+            const isGreen = g > r + 15 && g > b + 15;
+            return hGray < 45 && sat < 0.18 && brightness > 50 && brightness < 245 && !isWater && !isGreen;
+        }
+
+        for (let gy = 0; gy < GRID; gy += 1) {
+            for (let gx = 0; gx < GRID; gx += 1) {
+                if (!isUrbanZone(gx, gy)) continue;
+                let neighborCount = 0;
+                const offsets = [[-6,0],[6,0],[0,-6],[0,6],[-6,-6],[6,6],[-6,6],[6,-6]];
+                for (const [dx, dy] of offsets) { if (isUrbanZone(gx + dx, gy + dy)) neighborCount++; }
+                if (neighborCount < 5) continue; // écarte les pixels isolés hors vraie zone urbaine
+
                 const idx = (gy * GRID + gx) * 4;
                 const r = colorData[idx], g = colorData[idx + 1], b = colorData[idx + 2];
-                const hGray = heightData[idx];
-                const maxC = Math.max(r, g, b), minC = Math.min(r, g, b);
-                const sat = maxC === 0 ? 0 : (maxC - minC) / maxC;
                 const brightness = (r + g + b) / 3;
-                const isWater = b > r + 20 && b > g + 10;
-                const isGreen = g > r + 15 && g > b + 15;
-                const isLowland = hGray < 45; // les villes GTA V sont en zone basse/côtière, pas en montagne
-                const isUrban = isLowland && sat < 0.16 && brightness > 55 && brightness < 235 && !isWater && !isGreen;
-                if (isUrban && Math.random() < 0.4) {
-                    const worldX = (gx / GRID - 0.5) * SIZE;
-                    const worldZ = (gy / GRID - 0.5) * SIZE;
-                    const baseY = (hGray / 255) * 60; // suit le displacementScale du terrain
-                    const bHeight = 2 + Math.random() * Math.random() * 22; // majorité basse, quelques tours
-                    const footprint = cellSize * (1.3 + Math.random() * 0.5);
-                    dummy.position.set(worldX, baseY + bHeight / 2, worldZ);
-                    dummy.scale.set(footprint, bHeight, footprint);
+                // Dans la zone urbaine, seuls les pixels nettement plus clairs que la rue
+                // (contours des îlots/bâtiments de l'Atlas) génèrent un bloc — donne des formes
+                // qui suivent le vrai découpage des rues au lieu d'un pâté uniforme.
+                const isBuildingPixel = brightness > 150;
+                if (!isBuildingPixel) continue;
+                if (Math.random() > 0.75) continue; // évite une densité à 100%, garde des vides = rues
+
+                const hGray = heightData[idx];
+                const worldX = (gx / GRID - 0.5) * SIZE;
+                const worldZ = (gy / GRID - 0.5) * SIZE;
+                const baseY = (hGray / 255) * 60; // suit le displacementScale du terrain
+                const bHeight = 2 + Math.random() * Math.random() * 24; // majorité basse, quelques tours
+                const footprint = cellSize * (2.0 + Math.random() * 1.0);
+                dummy.position.set(worldX, baseY + bHeight / 2, worldZ);
+                dummy.rotation.y = (Math.random() - 0.5) * 0.3;
+                dummy.scale.set(footprint, bHeight, footprint);
+                dummy.updateMatrix();
+                const paletteIdx = (Math.random() * palettes.length) | 0;
+                meshes[paletteIdx].setMatrixAt(counts[paletteIdx]++, dummy.matrix);
+
+                // Petit "toit" plus sombre sur les tours pour casser la silhouette et ajouter du détail
+                if (bHeight > 14) {
+                    dummy.position.set(worldX, baseY + bHeight + 0.6, worldZ);
+                    dummy.scale.set(footprint * 0.55, 1.2, footprint * 0.55);
                     dummy.updateMatrix();
-                    mesh.setMatrixAt(count++, dummy.matrix);
+                    roofMesh.setMatrixAt(roofCount++, dummy.matrix);
                 }
             }
         }
-        mesh.count = count;
-        mesh.instanceMatrix.needsUpdate = true;
-        scene.add(mesh);
-        if (_carte3D) _carte3D.buildingsMesh = mesh;
+        meshes.forEach((m, i) => { m.count = counts[i]; m.instanceMatrix.needsUpdate = true; scene.add(m); });
+        roofMesh.count = roofCount;
+        roofMesh.instanceMatrix.needsUpdate = true;
+        scene.add(roofMesh);
+        if (_carte3D) _carte3D.buildingsMesh = meshes;
     };
     colorImg.onload = tryBuild;
     heightImg.onload = tryBuild;
+    colorImg.crossOrigin = 'anonymous';
     colorImg.src = colorDataUrl;
     heightImg.src = heightDataUrl;
 }
@@ -8661,17 +9035,29 @@ function _init3DTerrain() {
     scene.fog = new THREE.Fog(0x0a1628, 400, 1400);
 
     const camera = new THREE.PerspectiveCamera(50, w / h, 1, 3000);
-    camera.position.set(0, 420, 480);
+    camera.position.set(120, 320, 520);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(w, h);
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
 
-    // Lumières : ambiante douce + directionnelle façon "soleil" pour faire ressortir le relief
-    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-    const sun = new THREE.DirectionalLight(0xfff2d0, 1.1);
-    sun.position.set(300, 500, 200);
+    // Lumières : hémisphère (ciel/sol) + ambiante douce + soleil directionnel avec ombres portées
+    scene.add(new THREE.HemisphereLight(0xbfd9ff, 0x3a3226, 0.65));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+    const sun = new THREE.DirectionalLight(0xfff2d0, 1.4);
+    sun.position.set(280, 480, 180);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.left = -400; sun.shadow.camera.right = 400;
+    sun.shadow.camera.top = 400; sun.shadow.camera.bottom = -400;
+    sun.shadow.camera.near = 50; sun.shadow.camera.far = 1200;
+    sun.shadow.bias = -0.0015;
     scene.add(sun);
 
     // Terrain : plan déplacé par la heightmap, texturé avec la carte couleur
@@ -8687,10 +9073,11 @@ function _init3DTerrain() {
 
     const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0.02 });
     const mesh = new THREE.Mesh(geometry, material);
+    mesh.receiveShadow = true;
     scene.add(mesh);
 
     let loadedCount = 0;
-    const onLoaded = () => { loadedCount++; if (loadedCount === 2) { container.querySelectorAll('.carte3d-loading').forEach(e => e.remove()); _addProceduralBuildings(scene, colorUrl, heightUrl, SIZE); } };
+    const onLoaded = () => { loadedCount++; if (loadedCount === 2) { container.querySelectorAll('.carte3d-loading').forEach(e => e.remove()); } };
     const loadingEl = document.createElement('div');
     loadingEl.className = 'carte3d-loading';
     loadingEl.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#C9A227;font-size:14px;font-weight:700;z-index:10;pointer-events:none;';
@@ -8773,6 +9160,7 @@ function promptCarteImageUrl() {
 function renderCarteUI() {
     renderCarteMarkers();
     renderCartePointsList();
+    renderCarteItinerairesList();
 }
 
 
