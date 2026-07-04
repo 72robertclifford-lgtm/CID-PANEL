@@ -65,6 +65,7 @@
         body { font-family: 'Inter','Segoe UI',system-ui,sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; font-size: 14px; -webkit-font-smoothing: antialiased; }
 
         .container { max-width: 1300px; margin: 0 auto; padding: 16px 24px; }
+        .container.container--full-carte { max-width: 1700px; padding-left: 16px; padding-right: 16px; }
         .page { display: none; }
 
         .page.active { display: block; min-height: 100vh; }
@@ -1151,7 +1152,7 @@
 
 <!-- ===== PAGE DOSSIERS ===== -->
 <div id="pageDossiers" class="page">
-    <div class="container">
+    <div class="container" id="dossiersPageContainer">
         <div class="user-header" style="display:flex;align-items:center;gap:14px;">
             <div style="width:44px;height:44px;border-radius:50%;background:#0D2B5E;border:2px solid #C9A227;display:flex;align-items:center;justify-content:center;color:#C9A227;font-weight:700;font-size:15px;flex-shrink:0;" id="userAvatar">?</div>
             <div class="user-header-info" style="flex:1;">
@@ -4583,6 +4584,11 @@ function switchMainTab(tab) {
     if (tab === 'deposition') { currentDepositionId = null; renderMainDepositionTab(); }
     if (tab === 'rapport') { currentRapportId = null; renderMainRapportTab(); }
     if (tab === 'carte') { initCarte(); setTimeout(() => { if(_carteMap) { _carteMap.invalidateSize(true); } }, 300); }
+    // Onglet Carte : la page prend toute la largeur de l'écran pour un affichage plus grand
+    const dossiersContainer = document.getElementById('dossiersPageContainer');
+    if (dossiersContainer) dossiersContainer.classList.toggle('container--full-carte', tab === 'carte');
+    const carteContentEl = document.getElementById('mainCarteContent');
+    if (carteContentEl) carteContentEl.style.height = tab === 'carte' ? 'calc(100vh - 140px)' : 'calc(100vh - 172px)';
     // Sauvegarder l'onglet actif pour le restaurer au refresh
     try { sessionStorage.setItem('cid_active_tab', tab); } catch(e) {}
 
@@ -7791,17 +7797,16 @@ async function initCarte() {
         <!-- Carte : image haute résolution + canvas overlay Leaflet -->
         <div style="flex:1;position:relative;overflow:hidden;">
             <canvas id="gtaMap" style="width:100%;height:100%;position:absolute;top:0;left:0;z-index:2;background:#1a5c8a;touch-action:none;"></canvas>
-            <div style="position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:500;align-items:flex-end;">
-                <select id="carteLayerSelect" onchange="switchCarteLayer(this.value)" title="Changer de fond de carte"
-                    style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:6px 8px;cursor:pointer;outline:none;">
-                    ${Object.keys(MAP_LAYERS).map(k => `<option value="${k}">${MAP_LAYERS[k].label}</option>`).join('')}
-                    <option value="__custom__">✏️ URL personnalisée...</option>
-                </select>
+            <!-- Boutons de fond de carte : cliquables directement, pas de menu déroulant -->
+            <div id="carteLayerButtons" style="position:absolute;top:10px;left:10px;display:flex;gap:6px;z-index:500;">
+                ${Object.keys(MAP_LAYERS).map(k => `<button data-layer-key="${k}" onclick="switchCarteLayer('${k}')" style="background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:12px;font-weight:700;padding:7px 12px;cursor:pointer;white-space:nowrap;">${MAP_LAYERS[k].label}</button>`).join('')}
+            </div>
+            <div style="position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:500;">
                 <button onclick="if(window._cvMap)_cvMap.zoomBy(1)" style="width:32px;height:32px;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;">+</button>
                 <button onclick="if(window._cvMap)_cvMap.zoomBy(-1)" style="width:32px;height:32px;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;">−</button>
             </div>
-            <!-- Indicateur mode zone : flottant sur la carte, bien visible, ancré à gauche -->
-            <div id="drawingStatus" style="display:none;position:absolute;top:16px;left:16px;z-index:600;background:#0f1628;border:2px solid #C9A227;padding:12px 20px;border-radius:12px;color:#C9A227;font-size:14px;font-weight:800;text-align:left;box-shadow:0 8px 30px rgba(0,0,0,0.5);">
+            <!-- Indicateur mode zone : flottant sur la carte, bien visible, ancré à gauche sous les boutons de calque -->
+            <div id="drawingStatus" style="display:none;position:absolute;top:56px;left:10px;z-index:600;background:#0f1628;border:2px solid #C9A227;padding:12px 20px;border-radius:12px;color:#C9A227;font-size:14px;font-weight:800;text-align:left;box-shadow:0 8px 30px rgba(0,0,0,0.5);">
                 ✏️ Mode zone actif
                 <div style="margin-top:8px;display:flex;gap:8px;justify-content:flex-start;">
                     <button onclick="finishZone()" style="background:#C9A227;color:#0D2B5E;border:none;padding:7px 16px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:800;">✅ Terminer</button>
@@ -7846,10 +7851,13 @@ async function initCarte() {
         </div>
     </div>`;
 
-    // Sélectionne la bonne option du menu déroulant selon le fond de carte actuellement utilisé
-    const _layerKey = localStorage.getItem('cid_carte_layer_key') || DEFAULT_MAP_LAYER_KEY;
-    const _layerSelect = document.getElementById('carteLayerSelect');
-    if (_layerSelect) _layerSelect.value = MAP_LAYERS[_layerKey] ? _layerKey : '__custom__';
+    // Met en surbrillance le bouton du fond de carte actuellement utilisé
+    const _layerKey = MAP_LAYERS[localStorage.getItem('cid_carte_layer_key')] ? localStorage.getItem('cid_carte_layer_key') : DEFAULT_MAP_LAYER_KEY;
+    document.querySelectorAll('#carteLayerButtons button').forEach(btn => {
+        const active = btn.dataset.layerKey === _layerKey;
+        btn.style.background = active ? '#C9A227' : '#0a1628';
+        btn.style.color = active ? '#0D2B5E' : '#C9A227';
+    });
     _currentLayer = _layerKey;
 
     // Leaflet overlay transparent pour les marqueurs
@@ -8185,6 +8193,15 @@ function _initLeafletMap() {
 
     window.addEventListener('resize', () => { fitToScreen(); draw(); });
 
+    // ResizeObserver sur le conteneur de la carte : contrairement à l'event 'resize' de la fenêtre
+    // (qui ne se déclenche que si la fenêtre elle-même change de taille), ceci réagit à TOUT changement
+    // de taille du conteneur — y compris quand on bascule la page en pleine largeur via une classe CSS.
+    // Corrige le bug où la carte restait affichée en petit dans un coin après un tel changement.
+    if (window.ResizeObserver) {
+        const _ro = new ResizeObserver(() => { fitToScreen(); draw(); });
+        _ro.observe(canvas.parentElement);
+    }
+
     // API exposée compatible avec le reste du code (remplace l'objet Leaflet _carteMap)
     window._cvMap = {
         zoomBy(steps) { const rect = canvas.getBoundingClientRect(); zoomAt(rect.width/2, rect.height/2, Math.pow(1.4, steps)); },
@@ -8403,10 +8420,6 @@ function promptCarteImage() {
 }
 
 function switchCarteLayer(key) {
-    if (key === '__custom__') {
-        promptCarteImageUrl();
-        return;
-    }
     const layer = MAP_LAYERS[key];
     if (!layer) return;
     localStorage.setItem('cid_carte_image_url', layer.url);
