@@ -2492,7 +2492,7 @@ function renderFusillades() {
 // ===== HELPERS =====
 function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));const el=document.getElementById(id);if(el){el.classList.add('active');el.scrollTop=0;}window.scrollTo(0,0);if(id==='pageOrgChart')renderOrgChart();}
 function openPhoto(src){if(src){document.getElementById('modalImage').src=src;document.getElementById('photoModal').classList.add('active');}}
-function showSuccessDossiers(msg){const el=document.getElementById('successMsgDossiers');el.textContent='✓ '+msg;el.style.display='block';setTimeout(()=>el.style.display='none',3000);}
+function showSuccessDossiers(msg, duration=3000){const el=document.getElementById('successMsgDossiers');el.textContent='✓ '+msg;el.style.display='block';setTimeout(()=>el.style.display='none',duration);}
 function showSuccessEditor(msg){const el=document.getElementById('successMsgEditor');el.textContent=msg;el.style.display='block';setTimeout(()=>el.style.display='none',4000);}
 
 // ===== DARK MODE =====
@@ -2617,6 +2617,7 @@ window.addEventListener('load', async () => {
             showQuickAdminBtn();
             try { await loadDocEditors(); } catch(e){}
             try { await loadDocumentsFromSupabase(); } catch(e){}
+            try { await loadCarteData(); } catch(e){}
             await renderDossiersList();
             // Restaurer l'onglet actif
             try {
@@ -2634,6 +2635,7 @@ window.addEventListener('load', async () => {
             showQuickAdminBtn();
             try { await loadDocEditors(); } catch(e){}
             try { await loadDocumentsFromSupabase(); } catch(e){}
+            try { await loadCarteData(); } catch(e){}
             await renderDossiersList();
             try {
                 const _savedTab = sessionStorage.getItem('cid_active_tab');
@@ -7741,6 +7743,20 @@ function _applyCarteTabVisibility() {
     const carteTabEl = document.getElementById('tabCarte');
     if (carteTabEl) carteTabEl.style.display = _carteTabAllowed() ? '' : 'none';
     _renderCarteAccessToggleButton();
+    _notifyCarteAccessStatusOnce();
+}
+
+// Affiche un toast (même style que "Accès Procureur accordé") une seule fois par session,
+// informant l'utilisateur de son accès actuel à la carte, uniquement si une restriction est active.
+let _carteAccessToastShown = false;
+function _notifyCarteAccessStatusOnce() {
+    if (_carteAccessToastShown || !currentUser || !_carteAccessRestricted) return;
+    _carteAccessToastShown = true;
+    if (_carteTabAllowed()) {
+        showSuccessDossiers('🟢 Accès Carte accordé', 6000);
+    } else {
+        showSuccessDossiers('🔴 Accès Carte restreint', 6000);
+    }
 }
 
 async function toggleCarteAccessRestriction() {
@@ -7748,6 +7764,7 @@ async function toggleCarteAccessRestriction() {
     _carteAccessRestricted = !_carteAccessRestricted;
     await saveCarteData();
     _applyCarteTabVisibility();
+    showSuccessDossiers(_carteAccessRestricted ? '🔴 Accès Carte restreint activé' : '🟢 Accès Carte ouvert à tous', 6000);
 }
 
 function _renderCarteAccessToggleButton() {
