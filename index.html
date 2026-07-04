@@ -8586,7 +8586,7 @@ let _roadGrid = null; // { RES, costs: Float32Array, IMG_W, IMG_H }
 
 function _buildRoadGrid(img, IMG_W, IMG_H) {
     try {
-        const RES = 260; // résolution de la grille de recherche de chemin (compromis précision/vitesse)
+        const RES = 340; // résolution de la grille de recherche de chemin (compromis précision/vitesse)
         const canvas = document.createElement('canvas');
         canvas.width = RES; canvas.height = RES;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -8677,7 +8677,7 @@ function _astarPath(latA, lngA, latB, lngB) {
 function _lineAvgCost(pA, pB) {
     if (!_roadGrid) return Infinity;
     const { RES, costs, IMG_W, IMG_H } = _roadGrid;
-    const steps = 12;
+    const steps = 20;
     let total = 0;
     for (let s = 0; s <= steps; s++) {
         const t = s / steps;
@@ -8701,7 +8701,7 @@ function _simplifyRoute(path) {
     while (i < path.length - 1 && guard++ < path.length * 2) {
         let found = i + 1;
         for (let j = path.length - 1; j > i + 1; j--) {
-            if (_lineAvgCost(path[i], path[j]) < 4) { found = j; break; }
+            if (_lineAvgCost(path[i], path[j]) < 2.5) { found = j; break; }
         }
         result.push(path[found]);
         i = found;
