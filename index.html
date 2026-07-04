@@ -7786,10 +7786,10 @@ async function initCarte() {
                 <button onclick="if(window._cvMap)_cvMap.zoomBy(1)" style="width:32px;height:32px;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;">+</button>
                 <button onclick="if(window._cvMap)_cvMap.zoomBy(-1)" style="width:32px;height:32px;background:#0a1628;color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;">−</button>
             </div>
-            <!-- Indicateur mode zone : flottant sur la carte, bien visible -->
-            <div id="drawingStatus" style="display:none;position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:600;background:#0f1628;border:2px solid #C9A227;padding:12px 20px;border-radius:12px;color:#C9A227;font-size:14px;font-weight:800;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,0.5);">
+            <!-- Indicateur mode zone : flottant sur la carte, bien visible, ancré à gauche -->
+            <div id="drawingStatus" style="display:none;position:absolute;top:16px;left:16px;z-index:600;background:#0f1628;border:2px solid #C9A227;padding:12px 20px;border-radius:12px;color:#C9A227;font-size:14px;font-weight:800;text-align:left;box-shadow:0 8px 30px rgba(0,0,0,0.5);">
                 ✏️ Mode zone actif
-                <div style="margin-top:8px;display:flex;gap:8px;justify-content:center;">
+                <div style="margin-top:8px;display:flex;gap:8px;justify-content:flex-start;">
                     <button onclick="finishZone()" style="background:#C9A227;color:#0D2B5E;border:none;padding:7px 16px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:800;">✅ Terminer</button>
                     <button onclick="cancelZone()" style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);padding:7px 14px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:700;">✕ Annuler</button>
                 </div>
@@ -7850,7 +7850,7 @@ function _initLeafletMap() {
 
     // URL par défaut de la carte haute résolution (8000x8000, hébergée sur GitHub Pages à côté de index.html).
     // Modifiable à la volée par localStorage.setItem('cid_carte_image_url', '...') si besoin de la changer sans redéployer.
-    const _DEFAULT_MAP_URL = 'carte-gta-satellite.jpg';
+    const _DEFAULT_MAP_URL = 'carte-gta-atlas.png';
     const _customUrl = localStorage.getItem('cid_carte_image_url');
     const _mapSrc = _customUrl || _DEFAULT_MAP_URL;
     const img = new Image();
@@ -7946,10 +7946,12 @@ function _initLeafletMap() {
         ctx.fillStyle = '#1a5c8a';
         ctx.fillRect(0, 0, cw, ch);
         if (imgLoaded) {
-            // Lissage toujours actif en qualité maximale : c'est une image photo/satellite (pas du dessin
-            // avec des contours nets), donc le lissage bilinéaire reste préférable même au-delà du seuil
-            // natif (scale > nativeScale) : ça évite un crénelage moche plutôt qu'un flou plus doux.
-            ctx.imageSmoothingEnabled = true;
+            // La carte Atlas est un dessin en aplats de couleurs avec des contours nets (pas une photo) :
+            // en dessous du seuil natif, le lissage bilinéaire reste préférable (évite le crénelage).
+            // Au-delà (zoom "numérique" > nativeScale), on désactive le lissage : le résultat devient
+            // plus net/pixelisé plutôt que flou, ce qui est plus lisible sur ce style de dessin.
+            const beyondNative = scale > nativeScale;
+            ctx.imageSmoothingEnabled = !beyondNative;
             ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, offX, offY, IMG_W * scale, IMG_H * scale);
         }
@@ -8142,6 +8144,25 @@ function _initLeafletMap() {
         if (u) u.textContent = 'Lat: ' + ll.lat.toFixed(3) + ' | Lng: ' + ll.lng.toFixed(3);
     });
 
+    // Glisser-déposer une image directement sur un point existant de la carte : l'ajoute à ses photos.
+    canvas.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const px = e.clientX - rect.left, py = e.clientY - rect.top;
+        canvas.style.cursor = findPointAt(px, py) ? 'copy' : '';
+    });
+    canvas.addEventListener('drop', (e) => {
+        e.preventDefault();
+        canvas.style.cursor = '';
+        const rect = canvas.getBoundingClientRect();
+        const px = e.clientX - rect.left, py = e.clientY - rect.top;
+        const pt = findPointAt(px, py);
+        if (!pt) return; // dépose en dehors d'un point : ignoré
+        const files = Array.from(e.dataTransfer.files || []).filter(f => f.type.startsWith('image/'));
+        if (!files.length) return;
+        addCartePointPhotos(pt.id, files);
+    });
+
     window.addEventListener('resize', () => { fitToScreen(); draw(); });
 
     // API exposée compatible avec le reste du code (remplace l'objet Leaflet _carteMap)
@@ -8181,6 +8202,35 @@ function _pointInPolygon(lat, lng, points) {
 }
 
 // Popup léger custom (remplace L.popup)
+function _renderCartePointPhotos(obj) {
+    if (!obj.photos || !obj.photos.length) return '';
+    return '<div style="display:flex;gap:4px;flex-wrap:wrap;margin:6px 0;">' +
+        obj.photos.map(url => '<img src="' + url + '" style="width:48px;height:48px;object-fit:cover;border-radius:5px;cursor:pointer;border:1px solid rgba(201,162,39,0.3);" onclick="window.open(\'' + url + '\', \'_blank\')">').join('') +
+        '</div>';
+}
+
+async function addCartePointPhotos(pointId, files) {
+    if (!files || !files.length) return;
+    const pt = _cartePoints.find(p => p.id === pointId);
+    if (!pt) return;
+    const urls = await uploadFilesToImgbb(files);
+    if (!pt.photos) pt.photos = [];
+    pt.photos.push(...urls);
+    saveCarteData();
+    // Ré-ouvre le popup à jour avec les nouvelles photos affichées
+    const el = document.getElementById('cvPopup');
+    const px = el ? parseFloat(el.style.left) : 0;
+    const py = el ? parseFloat(el.style.top) : 0;
+    _openCartePopup(pt, 'point', px, py);
+    renderCarteMarkers();
+}
+
+function _canDeleteCarteItem() {
+    // Seuls Commanding, Supervisor CID et Master Investigator peuvent supprimer un point ou une zone de la carte.
+    const g = (currentUser?.grade || '').toLowerCase().trim();
+    return ['commanding', 'supervisor cid', 'master investigator'].includes(g) || currentUser?.role === 'admin';
+}
+
 function _openCartePopup(obj, kind, px, py) {
     _closeCartePopup();
     const div = document.createElement('div');
@@ -8188,14 +8238,21 @@ function _openCartePopup(obj, kind, px, py) {
     div.style.cssText = 'position:absolute;z-index:700;background:#0f1628;border:1px solid rgba(201,162,39,0.3);border-radius:10px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,0.5);max-width:220px;font-size:12px;color:white;';
     div.style.left = px + 'px';
     div.style.top = py + 'px';
+    const canDelete = _canDeleteCarteItem();
     if (kind === 'point') {
         const t = POINT_TYPES[obj.type] || POINT_TYPES.divers;
+        const photosHtml = _renderCartePointPhotos(obj);
         div.innerHTML = '<b style="color:' + t.color + ';font-size:14px">' + obj.nom + '</b><br><small style="color:#888">' + t.label + ' · @' + obj.by + ' · ' + obj.at + '</small>'
             + (obj.desc ? '<p style="font-size:12px;margin:4px 0">' + obj.desc + '</p>' : '')
-            + '<br><button onclick="deleteCartePoint(\'' + obj.id + '\')" style="margin-top:4px;background:#d32f2f;color:white;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px;">🗑 Supprimer</button>';
+            + photosHtml
+            + '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">'
+            + '<label style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px;">📷 Ajouter photo<input type="file" accept="image/*" multiple style="display:none" onchange="addCartePointPhotos(\'' + obj.id + '\', this.files)"></label>'
+            + (canDelete ? '<button onclick="deleteCartePoint(\'' + obj.id + '\')" style="background:#d32f2f;color:white;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px;">🗑 Supprimer</button>' : '')
+            + '</div>';
     } else {
         const zt = ZONE_TYPES[obj.type] || ZONE_TYPES.danger;
-        div.innerHTML = '<b>' + obj.nom + '</b><br><small>' + zt.label + ' · @' + obj.by + '</small><br><button onclick="deleteCarteZone(\'' + obj.id + '\')" style="margin-top:6px;background:#d32f2f;color:white;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px;">🗑 Supprimer</button>';
+        div.innerHTML = '<b>' + obj.nom + '</b><br><small>' + zt.label + ' · @' + obj.by + '</small>'
+            + (canDelete ? '<br><button onclick="deleteCarteZone(\'' + obj.id + '\')" style="margin-top:6px;background:#d32f2f;color:white;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px;">🗑 Supprimer</button>' : '');
     }
     const parent = document.getElementById('gtaMap').parentElement;
     parent.appendChild(div);
@@ -8290,6 +8347,7 @@ function goToPoint(id) {
 }
 
 function deleteCartePoint(id) {
+    if (!_canDeleteCarteItem()) { alert('Seuls Commanding, Supervisor CID et Master Investigator peuvent supprimer un point.'); return; }
     if (!confirm('Supprimer ce point ?')) return;
     _cartePoints = _cartePoints.filter(p => p.id !== id);
     saveCarteData();
@@ -8299,6 +8357,7 @@ function deleteCartePoint(id) {
 }
 
 function deleteCarteZone(id) {
+    if (!_canDeleteCarteItem()) { alert('Seuls Commanding, Supervisor CID et Master Investigator peuvent supprimer une zone.'); return; }
     if (!confirm('Supprimer cette zone ?')) return;
     _carteZones = _carteZones.filter(z => z.id !== id);
     saveCarteData();
