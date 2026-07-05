@@ -7725,19 +7725,26 @@ async function loadCarteData() {
     _applyCarteTabVisibility();
 }
 
+let _saveCarteInFlight = Promise.resolve(); // sérialise les sauvegardes pour éviter tout chevauchement
+
 async function saveCarteData() {
     const payload = JSON.stringify({ points: _cartePoints, zones: _carteZones, itineraires: _carteItineraires, restricted: _carteAccessRestricted });
     localStorage.setItem('cid_carte', payload);
-    try {
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings?key=eq.cid_carte`, {
-            method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-        });
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings`, {
-            method: 'POST',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-            body: JSON.stringify({ key: 'cid_carte', value: payload })
-        });
-    } catch(e) {}
+    // Chaque appel attend que la sauvegarde précédente soit terminée avant de démarrer la sienne :
+    // évite les conflits 409 quand plusieurs sauvegardes rapprochées (ex: glisser un point du tracé
+    // plusieurs fois de suite) se chevauchaient auparavant.
+    _saveCarteInFlight = _saveCarteInFlight.then(async () => {
+        try {
+            // Upsert (insert ou update en une seule requête) au lieu de DELETE+POST : élimine le risque
+            // de conflit 409 qui pouvait survenir si un POST arrivait avant la fin du DELETE précédent.
+            await fetch(`${SUPABASE_URL}/rest/v1/org_settings?on_conflict=key`, {
+                method: 'POST',
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+                body: JSON.stringify({ key: 'cid_carte', value: payload })
+            });
+        } catch(e) {}
+    });
+    await _saveCarteInFlight;
 }
 
 // Détermine si le grade courant peut voir/utiliser l'onglet Carte, en tenant compte de la restriction
