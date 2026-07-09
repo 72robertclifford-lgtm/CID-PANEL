@@ -7682,6 +7682,8 @@ const POINT_TYPES = {
     'arme':       { label: 'Laboratoire d\'Arme',  icon: '🔫', color: '#f44336' },
     'drogue':     { label: 'Laboratoire de Drogue',icon: '💊', color: '#9c27b0' },
     'qg':         { label: 'QG',                   icon: '🏠', color: '#2196f3' },
+    'juridiction': { label: 'Juridiction SIA',     icon: '⚖️', color: '#00bcd4' },
+    'stockage':   { label: 'Stockage',             icon: '📦', color: '#795548' },
     'divers':     { label: 'Divers',               icon: '📍', color: '#ff9800' },
 };
 const ZONE_TYPES = {
@@ -8426,6 +8428,43 @@ function _initLeafletMap() {
         zoomAt(px, py, factor);
     }, { passive: false });
 
+    // ── Tooltip au survol des points ──────────────────────────────────────────
+    let _hoverTooltipId = null; // id du point actuellement affiché en tooltip
+    canvas.addEventListener('mousemove', (e) => {
+        if (dragging) return;
+        const rect = canvas.getBoundingClientRect();
+        const px = e.clientX - rect.left, py = e.clientY - rect.top;
+        const pt = findPointAt(px, py);
+        if (pt) {
+            canvas.style.cursor = 'pointer';
+            if (_hoverTooltipId === pt.id) return; // déjà affiché
+            _hoverTooltipId = pt.id;
+            // Supprimer un tooltip existant (pas le popup de clic)
+            const old = document.getElementById('cvHoverTooltip');
+            if (old) old.remove();
+            const t = POINT_TYPES[pt.type] || POINT_TYPES.divers;
+            const tip = document.createElement('div');
+            tip.id = 'cvHoverTooltip';
+            tip.style.cssText = `position:absolute;z-index:699;background:#0f1628ee;border:1px solid ${t.color}55;border-radius:8px;padding:7px 11px;pointer-events:none;font-size:12px;color:white;max-width:200px;box-shadow:0 4px 16px rgba(0,0,0,0.4);transition:opacity 0.1s;`;
+            tip.style.left = (px + 14) + 'px';
+            tip.style.top  = (py - 10) + 'px';
+            tip.innerHTML = `<span style="color:${t.color};font-weight:700;">${t.icon} ${pt.nom}</span><br><span style="color:#aaa;font-size:11px;">${t.label}</span>${pt.desc ? `<div style="margin-top:3px;color:#ccc;font-size:11px;">${pt.desc}</div>` : ''}`;
+            const parent = document.getElementById('gtaMap').parentElement;
+            parent.appendChild(tip);
+        } else {
+            canvas.style.cursor = 'grab';
+            _hoverTooltipId = null;
+            const old = document.getElementById('cvHoverTooltip');
+            if (old) old.remove();
+        }
+    });
+    canvas.addEventListener('mouseleave', () => {
+        _hoverTooltipId = null;
+        const old = document.getElementById('cvHoverTooltip');
+        if (old) old.remove();
+    });
+    // ─────────────────────────────────────────────────────────────────────────
+
     canvas.addEventListener('click', (e) => {
         if (dragMoved) { dragMoved = false; return; }
         if (_justDraggedRoutePoint) { _justDraggedRoutePoint = false; return; }
@@ -8579,7 +8618,7 @@ function _openCartePopup(obj, kind, px, py) {
     _closeCartePopup();
     const div = document.createElement('div');
     div.id = 'cvPopup';
-    div.style.cssText = 'position:absolute;z-index:700;background:#0f1628;border:1px solid rgba(201,162,39,0.3);border-radius:10px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,0.5);max-width:220px;font-size:12px;color:white;';
+    div.style.cssText = 'position:absolute;z-index:700;background:#0f1628;border:1px solid rgba(201,162,39,0.3);border-radius:10px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,0.5);max-width:240px;font-size:12px;color:white;';
     div.style.left = px + 'px';
     div.style.top = py + 'px';
     const canDelete = _canDeleteCarteItem();
@@ -8589,10 +8628,35 @@ function _openCartePopup(obj, kind, px, py) {
         div.innerHTML = '<b style="color:' + t.color + ';font-size:14px">' + obj.nom + '</b><br><small style="color:#888">' + t.label + ' · @' + obj.by + ' · ' + obj.at + '</small>'
             + (obj.desc ? '<p style="font-size:12px;margin:4px 0">' + obj.desc + '</p>' : '')
             + photosHtml
-            + '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">'
-            + '<label style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2);padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px;">📷 Ajouter photo<input type="file" accept="image/*" multiple style="display:none" onchange="addCartePointPhotos(\'' + obj.id + '\', this.files)"></label>'
-            + (canDelete ? '<button onclick="deleteCartePoint(\'' + obj.id + '\')" style="background:#d32f2f;color:white;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px;">🗑 Supprimer</button>' : '')
-            + '</div>';
+            + `<div id="cvDropZone_${obj.id}" style="margin-top:8px;border:2px dashed rgba(201,162,39,0.35);border-radius:8px;padding:8px;text-align:center;cursor:pointer;transition:all 0.2s;color:rgba(255,255,255,0.5);font-size:11px;">
+                📷 Glisser une image ici<br><span style="font-size:10px;color:rgba(255,255,255,0.3);">ou cliquer pour sélectionner</span>
+                <input type="file" accept="image/*" multiple style="display:none" id="cvFileInput_${obj.id}" onchange="addCartePointPhotos('${obj.id}', this.files)">
+            </div>`
+            + (canDelete ? '<button onclick="deleteCartePoint(\'' + obj.id + '\')" style="margin-top:6px;width:100%;background:#d32f2f;color:white;border:none;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:11px;">🗑 Supprimer</button>' : '');
+
+        // Activer drag & drop sur la zone
+        setTimeout(() => {
+            const dz = document.getElementById('cvDropZone_' + obj.id);
+            const fi = document.getElementById('cvFileInput_' + obj.id);
+            if (!dz || !fi) return;
+            dz.addEventListener('click', () => fi.click());
+            dz.addEventListener('dragover', (ev) => {
+                ev.preventDefault();
+                dz.style.borderColor = 'rgba(201,162,39,0.8)';
+                dz.style.background = 'rgba(201,162,39,0.08)';
+            });
+            dz.addEventListener('dragleave', () => {
+                dz.style.borderColor = 'rgba(201,162,39,0.35)';
+                dz.style.background = '';
+            });
+            dz.addEventListener('drop', (ev) => {
+                ev.preventDefault();
+                dz.style.borderColor = 'rgba(201,162,39,0.35)';
+                dz.style.background = '';
+                const files = ev.dataTransfer.files;
+                if (files && files.length) addCartePointPhotos(obj.id, files);
+            });
+        }, 0);
     } else {
         const zt = ZONE_TYPES[obj.type] || ZONE_TYPES.danger;
         div.innerHTML = '<b>' + obj.nom + '</b><br><small>' + zt.label + ' · @' + obj.by + '</small>'
