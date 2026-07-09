@@ -8010,17 +8010,11 @@ function _initLeafletMap() {
 
     img.onload = () => {
         imgLoaded = true;
-        // Zoom max plafonné à la résolution native de l'image (1 pixel image = 1 pixel écran physique).
-        // Au-delà, on afficherait plus de pixels écran qu'il n'y en a dans le fichier source, ce qui
-        // dégraderait forcément la qualité (flou/pixelisé) : on privilégie ici la qualité au zoom poussé.
-        // On garde un plancher à 3 pour toujours permettre un minimum de zoom utile, même si l'image
-        // externe haute résolution n'a pas encore chargé (fallback sur l'ancienne image basse résolution).
         nativeScale = img.naturalWidth ? img.naturalWidth / IMG_W : 8;
-        // Zoom max largement augmenté : on autorise jusqu'à 8× la résolution native grâce au
-        // système de tuiles lazy-loaded qui maintient la qualité même en zoom très profond.
-        maxScale = Math.max(3, nativeScale * 8);
+        // Zoom max élevé — le rendu par source-clipping maintient la qualité native
+        maxScale = Math.max(3, nativeScale * 6);
         fitToScreen();
-        console.log('[Carte GTA] Image chargée:', _mapSrc, '| Résolution native:', img.naturalWidth + 'x' + img.naturalHeight, '| minScale:', minScale, '| maxScale:', maxScale);
+        console.log('[Carte GTA] Image chargée:', _mapSrc, '| Résolution native:', img.naturalWidth + 'x' + img.naturalHeight, '| maxScale:', maxScale);
         draw();
         _buildRoadGrid(img, IMG_W, IMG_H);
     };
@@ -8120,21 +8114,22 @@ function _initLeafletMap() {
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
 
-            // Rendu par tuiles : seules les tuiles visibles à l'écran sont dessinées.
-            // Chaque tuile est pré-rendue une seule fois et mise en cache (lazy-loading).
-            const tilesX = Math.ceil(IMG_W / TILE_PX);
-            const tilesY = Math.ceil(IMG_H / TILE_PX);
-            for (let ty = 0; ty < tilesY; ty++) {
-                for (let tx = 0; tx < tilesX; tx++) {
-                    const screenX = offX + tx * TILE_PX * scale;
-                    const screenY = offY + ty * TILE_PX * scale;
-                    const screenW = Math.min(TILE_PX, IMG_W - tx * TILE_PX) * scale;
-                    const screenH = Math.min(TILE_PX, IMG_H - ty * TILE_PX) * scale;
-                    // Culling : ignorer les tuiles hors écran
-                    if (screenX + screenW < 0 || screenX > cw || screenY + screenH < 0 || screenY > ch) continue;
-                    const tile = _getTile(tx, ty);
-                    if (tile) ctx.drawImage(tile, screenX, screenY, screenW, screenH);
-                }
+            // Source-clipping : on calcule la région de l'image source qui correspond
+            // exactement à la zone visible à l'écran, et on la dessine à pleine résolution.
+            // Résultat : qualité native même en zoom très profond, et seule la zone visible
+            // est traitée par le GPU (pas toute l'image). Aucun problème CORS.
+            const visX0 = Math.max(0, -offX / scale);
+            const visY0 = Math.max(0, -offY / scale);
+            const visX1 = Math.min(IMG_W, (cw - offX) / scale);
+            const visY1 = Math.min(IMG_H, (ch - offY) / scale);
+            const srcW = visX1 - visX0;
+            const srcH = visY1 - visY0;
+            if (srcW > 0 && srcH > 0) {
+                const dstX = offX + visX0 * scale;
+                const dstY = offY + visY0 * scale;
+                const dstW = srcW * scale;
+                const dstH = srcH * scale;
+                ctx.drawImage(img, visX0, visY0, srcW, srcH, dstX, dstY, dstW, dstH);
             }
         }
 
