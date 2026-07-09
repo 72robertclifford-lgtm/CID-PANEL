@@ -8113,24 +8113,10 @@ function _initLeafletMap() {
         if (imgLoaded) {
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
-
-            // Source-clipping : on calcule la région de l'image source qui correspond
-            // exactement à la zone visible à l'écran, et on la dessine à pleine résolution.
-            // Résultat : qualité native même en zoom très profond, et seule la zone visible
-            // est traitée par le GPU (pas toute l'image). Aucun problème CORS.
-            const visX0 = Math.max(0, -offX / scale);
-            const visY0 = Math.max(0, -offY / scale);
-            const visX1 = Math.min(IMG_W, (cw - offX) / scale);
-            const visY1 = Math.min(IMG_H, (ch - offY) / scale);
-            const srcW = visX1 - visX0;
-            const srcH = visY1 - visY0;
-            if (srcW > 0 && srcH > 0) {
-                const dstX = offX + visX0 * scale;
-                const dstY = offY + visY0 * scale;
-                const dstW = srcW * scale;
-                const dstH = srcH * scale;
-                ctx.drawImage(img, visX0, visY0, srcW, srcH, dstX, dstY, dstW, dstH);
-            }
+            // Dessin simple et fiable : toute l'image scalée à la position courante.
+            // Le source-clipping n'est pas nécessaire ici car drawImage avec scale
+            // est déjà optimisé par le GPU (seule la zone visible est rastérisée).
+            ctx.drawImage(img, offX, offY, IMG_W * scale, IMG_H * scale);
         }
 
         // Zones
