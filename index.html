@@ -1402,143 +1402,7 @@
                 }
             </style>
 
-            <div class="mandat-wrap">
-                <div class="mandat-toolbar">
-                    <button onclick="window.print()">🖨️ Imprimer / Exporter PDF</button>
-                </div>
-
-                <div class="mandat-doc" contenteditable="false">
-                    <!-- PAGE 1 -->
-                    <div class="m-page">
-                        <div class="m-header">
-                            <div class="m-eyebrow">— Crime Investigation Division —</div>
-                            <h1 class="m-title">🔎 MANDAT DE PERQUISITION</h1>
-                            <div class="m-subtitle">Criminal Investigation Division</div>
-                        </div>
-                        <div class="m-page-inner" style="padding-top:0;">
-                            <div style="text-align:center;">
-                                <div class="m-banner">🔒 Utilisation pour la division seulement</div>
-                            </div>
-
-                            <div class="m-section-box">
-                                <div class="m-section-header"><span class="m-sh-icon">🏛️</span> Informations du département</div>
-                                <div class="m-fields">
-                                    <div class="m-field"><b>Date</b> <span id="mandatDateField">xx/xx/xx25</span></div>
-                                    <div class="m-field" style="display:block;">
-                                        <b>Officiers</b>
-                                        <div id="mandatOfficiersChips" style="display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 10px;"></div>
-                                        <div style="position:relative;">
-                                            <button type="button" onclick="mandatToggleOfficiersDropdown()" style="width:100%;padding:10px 14px;border:1px solid rgba(201,162,39,0.3);border-radius:10px;font-size:13px;font-weight:700;background:rgba(13,43,94,0.15);color:#C9A227;text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-family:Georgia,serif;">
-                                                <span style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">👤</span> Sélectionner des agents...</span>
-                                                <span id="mandatOfficiersArrow" style="font-size:12px;transition:transform 0.2s;">▾</span>
-                                            </button>
-                                            <div id="mandatOfficiersDropdown" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:#f7f7f7;border:1px solid rgba(201,162,39,0.3);border-radius:12px;max-height:280px;overflow-y:auto;z-index:200;box-shadow:0 12px 32px rgba(0,0,0,0.3);padding:8px;">
-                                                <div style="padding:8px 10px 10px;border-bottom:1px solid rgba(201,162,39,0.15);margin-bottom:6px;">
-                                                    <input type="text" id="mandatOfficiersSearch" placeholder="🔍 Rechercher..." oninput="mandatFilterOfficiersDropdown(this.value)" style="width:100%;padding:7px 10px;border:1px solid #ccc;border-radius:7px;font-size:13px;background:#fff;color:#111;box-sizing:border-box;font-family:Georgia,serif;">
-                                                </div>
-                                                <div id="mandatOfficiersList"></div>
-                                                <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(201,162,39,0.15);">
-                                                    <input type="text" id="mandatOfficiersCustomInput" placeholder="@pseudo (hors liste)" onkeydown="if(event.key==='Enter'){event.preventDefault();mandatAddCustomOfficier();}" style="flex:1;padding:6px 9px;border:1px solid #ccc;border-radius:6px;font-size:12px;font-family:Georgia,serif;">
-                                                    <button type="button" onclick="mandatAddCustomOfficier()" style="background:#555;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:700;">+</button>
-                                                </div>
-                                            </div>
-                                            <button type="button" onclick="mandatConfirmOfficiers()" style="width:100%;margin-top:8px;padding:10px;background:linear-gradient(135deg,#C9A227,#e0b830);color:#0D2B5E;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:900;letter-spacing:0.3px;box-shadow:0 3px 10px rgba(201,162,39,0.25);font-family:Georgia,serif;">✅ Confirmer la sélection</button>
-                                        </div>
-                                    </div>
-                                    <div class="m-field">
-                                        <b>Localisation</b>
-                                        <input type="text" class="m-input" id="mandatLocalisation" placeholder="Ex: CID Office" oninput="mandatField('localisation',this.value)">
-                                    </div>
-                                    <div class="m-field m-big">
-                                        <b>Description de la demande</b>
-                                        <textarea class="m-textarea" id="mandatDescription" placeholder="Demande de mandat de perquisition pour la propriété..." oninput="mandatField('description',this.value);mandatAutoGrow(this)"></textarea>
-                                    </div>
-                                    <div class="m-field">
-                                        <b>N° de la propriété visée</b>
-                                        <input type="text" class="m-input m-input-red" id="mandatNumero" placeholder="N° xx - localisation" oninput="mandatField('numero',this.value)">
-                                    </div>
-                                    <div class="m-field">
-                                        <b>Enquête</b>
-                                        <input type="text" class="m-input" id="mandatEnquete" placeholder="Ex: Suspicion de trafic de stupéfiants" oninput="mandatField('enquete',this.value)">
-                                    </div>
-                                    <div class="m-field">
-                                        <b>Agents impliqués</b>
-                                        <input type="text" class="m-input" id="mandatAgentsImpliques" placeholder="Noms des agents impliqués dans l'enquête..." oninput="mandatField('agentsImpliques',this.value)">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="m-page-footer">Page 1 / 3 — CID Confidentiel</div>
-                        </div>
-                    </div>
-
-                    <!-- PAGE 2 -->
-                    <div class="m-page">
-                        <div class="m-page-note">↓ Page suivante</div>
-                        <div class="m-page-inner" style="padding-top:24px;">
-
-                            <div class="m-section-box">
-                                <div class="m-section-header"><span class="m-sh-icon">🧍</span> Informations du propriétaire</div>
-                                <div class="m-fields">
-                                    <div class="m-field">
-                                        <b>Nom prénom</b>
-                                        <input type="text" class="m-input" id="mandatNomPrenom" placeholder="Inconnu" oninput="mandatField('nomPrenom',this.value)">
-                                    </div>
-                                    <div class="m-field-row">
-                                        <div class="m-field">
-                                            <b>Date de naissance</b>
-                                            <input type="text" class="m-input" id="mandatDob" placeholder="Inconnu" oninput="mandatField('dob',this.value)">
-                                        </div>
-                                        <div class="m-field">
-                                            <b>Âge</b>
-                                            <input type="text" class="m-input" id="mandatAge" placeholder="Inconnu" oninput="mandatField('age',this.value)">
-                                        </div>
-                                    </div>
-                                    <div class="m-field">
-                                        <b>Téléphone</b>
-                                        <input type="text" class="m-input" id="mandatTel" placeholder="Inconnu" oninput="mandatField('tel',this.value)">
-                                    </div>
-                                    <div class="m-field">
-                                        <b>Adresse</b>
-                                        <input type="text" class="m-input" id="mandatAdresse" placeholder="Inconnu" oninput="mandatField('adresse',this.value)">
-                                    </div>
-                                    <div class="m-field" style="display:block;">
-                                        <b>Faits</b>
-                                        <div id="mandatFaitsList" style="display:flex;flex-direction:column;gap:6px;margin-top:4px;"></div>
-                                        <button type="button" class="m-mini-add" onclick="mandatAddFait()">+ Ajouter un fait</button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="m-section-box">
-                                <div class="m-section-header"><span class="m-sh-icon">🗂️</span> Informations</div>
-                                <div style="padding:14px 16px 18px;">
-                                    <textarea class="m-textarea m-info-text" id="mandatInfoText" placeholder="Décrivez le contexte de l'enquête : observations, éléments déclencheurs, activités suspectes constatées..." oninput="mandatField('infoText',this.value);mandatAutoGrow(this)"></textarea>
-
-                                    <div class="m-timeline" id="mandatEntriesList"></div>
-                                    <button class="m-add-entry-btn" onclick="mandatAddEntry()">+ Ajouter une information (texte + image)</button>
-                                </div>
-                            </div>
-                            <div class="m-page-footer">Page 2 / 3 — CID Confidentiel</div>
-                        </div>
-                    </div>
-
-                    <!-- PAGE 3 -->
-                    <div class="m-page">
-                        <div class="m-page-inner" style="padding-top:28px;">
-                            <div class="m-section-box">
-                                <div class="m-section-header"><span class="m-sh-icon">📎</span> Pièces du dossier</div>
-                                <div style="padding:16px 16px 18px;">
-                                    <div class="m-etc">(...) suite de l'enquête</div>
-                                    <div id="mandatDocumentsList" class="m-doc-list"></div>
-                                    <button class="m-add-entry-btn" onclick="mandatAddDocument()">+ Ajouter un lien</button>
-                                    <div class="m-dossier-note" contenteditable="true" oninput="mandatNoteField(this.textContent)" id="mandatDossierNote">Aucun propriétaire requis ou appartient à xxx pour local suspecté</div>
-                                </div>
-                            </div>
-                            <div class="m-page-footer">Page 3 / 3 — CID Confidentiel</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <div id="mainMandatContent"></div>
         </div>
     </div>
 </div>
@@ -4884,7 +4748,7 @@ function switchMainTab(tab) {
     if (tab === 'documents') renderDocumentsTab();
     if (tab === 'deposition') { currentDepositionId = null; renderMainDepositionTab(); }
     if (tab === 'rapport') { currentRapportId = null; renderMainRapportTab(); }
-    if (tab === 'mandat') { mandatInit(); }
+    if (tab === 'mandat') { renderMainMandatTab(); }
     if (tab === 'carte') { initCarte(); setTimeout(() => { if(_carteMap) { _carteMap.invalidateSize(true); } }, 300); }
     // Onglet Carte : la page prend toute la largeur de l'écran pour un affichage plus grand
     const dossiersContainer = document.getElementById('dossiersPageContainer');
@@ -7318,28 +7182,20 @@ function rapDelPhoto(id, bi, pi) {
     renderMainRapportTab();
 }
 
-// ==================== MANDAT DE PERQUISITION ====================
-function mandatLoadData() {
-    try {
-        const raw = localStorage.getItem('cid_mandat_data');
-        if (raw) return JSON.parse(raw);
-    } catch(e) {}
+// ==================== MANDATS DE PERQUISITION (liste + éditeur) ====================
+let cidMandats = [];
+let currentMandatId = null;
+let cidMandatsLoaded = false;
+
+function blankMandatForm() {
     return {
-        date: '',
-        entries: [],
+        date: new Date().toLocaleDateString('fr-FR'),
         officiers: [],
-        localisation: '',
-        description: '',
-        numero: '',
-        enquete: '',
-        agentsImpliques: '',
-        nomPrenom: '',
-        dob: '',
-        age: '',
-        tel: '',
-        adresse: '',
+        localisation: '', description: '', numero: '', enquete: '', agentsImpliques: '',
+        nomPrenom: '', dob: '', age: '', tel: '', adresse: '',
         faits: ['', '', ''],
         infoText: '',
+        entries: [],
         documents: [
             { label: "Demande d'injonction immobilière", url: '' },
             { label: 'Injonction immobilière', url: '' }
@@ -7347,45 +7203,307 @@ function mandatLoadData() {
         note: 'Aucun propriétaire requis ou appartient à xxx pour local suspecté'
     };
 }
-let mandatData = mandatLoadData();
 
-function mandatSaveData() {
-    try { localStorage.setItem('cid_mandat_data', JSON.stringify(mandatData)); } catch(e) {}
+async function loadCidMandats() {
+    try {
+        const rows = await sbFetch('org_settings?key=eq.cid_mandats&select=value');
+        if (rows && rows[0]) {
+            cidMandats = JSON.parse(rows[0].value || '[]');
+            cidMandatsLoaded = true;
+            localStorage.setItem('cid_mandats', JSON.stringify(cidMandats));
+            return;
+        }
+    } catch(e) {}
+    try { cidMandats = JSON.parse(localStorage.getItem('cid_mandats') || '[]'); } catch(e) { cidMandats = []; }
+    cidMandatsLoaded = true;
 }
 
-function mandatInit() {
-    if (!mandatData.date) {
-        mandatData.date = new Date().toLocaleDateString('fr-FR');
-        mandatSaveData();
+async function saveCidMandats() {
+    localStorage.setItem('cid_mandats', JSON.stringify(cidMandats));
+    try {
+        await fetch(`${SUPABASE_URL}/rest/v1/org_settings?key=eq.cid_mandats`, {
+            method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+        });
+        await fetch(`${SUPABASE_URL}/rest/v1/org_settings`, {
+            method: 'POST',
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+            body: JSON.stringify({ key: 'cid_mandats', value: JSON.stringify(cidMandats) })
+        });
+    } catch(e) {}
+}
+
+function canViewMandat(id) {
+    return getPermLevel() !== 'procureur';
+}
+
+// ---- Entrée principale ----
+async function renderMainMandatTab() {
+    const container = document.getElementById('mainMandatContent');
+    if (!container) return;
+    if (!cidMandatsLoaded) {
+        container.innerHTML = '<div style="text-align:center;padding:30px;color:#C9A227">⏳ Chargement...</div>';
+        await loadCidMandats();
     }
-    if (!mandatData.documents) mandatData.documents = [
+    if (currentMandatId) renderMandatEditor(container);
+    else renderMandatsList(container);
+}
+
+// ---- Vue liste ----
+function renderMandatsList(container) {
+    const canWrite = canEdit();
+    const canCreate = getPermLevel() !== 'procureur';
+
+    let html = `
+    <div style="margin-bottom:18px;">
+        <h2 style="color:#C9A227;font-size:20px;font-weight:900;margin:0 0 4px;">📜 Mandats de perquisition</h2>
+        <p style="color:var(--text3);font-size:13px;margin:0;">Demandes officielles de la Criminal Investigation Division</p>
+    </div>`;
+
+    if (canCreate) html += `<button class="btn-new-dossier" onclick="createMandat()">+ Créer un nouveau mandat</button>`;
+
+    const visible = cidMandats.filter(m => canViewMandat(m.id));
+
+    if (visible.length === 0) {
+        html += `<div class="empty-state"><h2>Aucun mandat</h2><p>${canCreate ? 'Créez un nouveau mandat pour commencer' : 'Aucun mandat disponible'}</p></div>`;
+        container.innerHTML = html;
+        return;
+    }
+
+    html += `<div class="dossiers-grid">` + visible.map(m => `
+        <div class="dossier-card">
+            <div class="dossier-card-top">
+                <div class="dossier-card-icon">📜</div>
+                <div class="dossier-card-info">
+                    <h3>${rapEsc(m.name)}</h3>
+                    <div class="dossier-card-meta">
+                        <span>@${rapEsc(m.username)||'—'}</span>
+                        <span>${rapEsc(m.modified_at)}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="dossier-card-actions">
+                <button class="dcard-btn dcard-btn-open" onclick="openMandat('${m.id}')">📜 Ouvrir le mandat</button>
+                ${getPermLevel() !== 'procureur' ? `
+                <div class="dossier-card-actions-row">
+                    <button class="dcard-btn" id="editorsbtn-mandat-${m.id}" style="${getEditorsBtnStyle('mandat',m.id)}" onclick="openEditorsModal('mandat','${m.id}','${rapEsc(m.name)}')">${getEditorsBtnLabel('mandat',m.id)}</button>
+                    ${canWrite ? `<button class="dcard-btn dcard-btn-rename" onclick="renameMandat('${m.id}')">✏️ Renommer</button>` : ''}
+                    ${canDeleteDossier() ? `<button class="dcard-btn dcard-btn-del" onclick="deleteMandat('${m.id}')">🗑 Suppr.</button>` : ''}
+                </div>` : ''}
+            </div>
+        </div>`).join('') + `</div>`;
+
+    container.innerHTML = html;
+}
+
+// ---- Actions cartes ----
+async function createMandat() { openMandatModal('create'); }
+async function _doCreateMandat(name) {
+    const now = new Date().toLocaleDateString('fr-FR');
+    cidMandats.unshift({ id: Date.now().toString(), name: name.trim(), username: currentUser?currentUser.username:'', created_at: now, modified_at: now, form: blankMandatForm() });
+    await saveCidMandats();
+    renderMainMandatTab();
+}
+
+function openMandat(id) {
+    currentMandatId = id;
+    renderMainMandatTab();
+    setTimeout(() => {
+        document.querySelectorAll('#mainMandatContent textarea').forEach(ta => mandatAutoGrow(ta));
+    }, 100);
+}
+function closeMandat() { saveCidMandats(); currentMandatId = null; renderMainMandatTab(); }
+
+async function renameMandat(id) {
+    const m = cidMandats.find(x => x.id === id);
+    if (!m) return;
+    openMandatModal('rename', id, m.name);
+}
+async function _doRenameMandat(id, name) {
+    const m = cidMandats.find(x => x.id === id);
+    if (!m) return;
+    m.name = name.trim();
+    m.modified_at = new Date().toLocaleDateString('fr-FR');
+    await saveCidMandats();
+    renderMainMandatTab();
+}
+
+async function deleteMandat(id) {
+    if (!confirm('Supprimer ce mandat ? Action irréversible.')) return;
+    const i = cidMandats.findIndex(x => x.id === id);
+    if (i >= 0) cidMandats.splice(i, 1);
+    if (currentMandatId === id) currentMandatId = null;
+    await saveCidMandats();
+    renderMainMandatTab();
+}
+
+// ---- Helpers données du mandat actuellement ouvert ----
+function mandatForm() {
+    const m = cidMandats.find(x => x.id === currentMandatId);
+    return m ? m.form : null;
+}
+function mandatSaveData() {
+    const m = cidMandats.find(x => x.id === currentMandatId);
+    if (m) m.modified_at = new Date().toLocaleDateString('fr-FR');
+    saveCidMandats();
+}
+
+// ---- Éditeur (une page façon document officiel) ----
+function renderMandatEditor(container) {
+    const m = cidMandats.find(x => x.id === currentMandatId);
+    if (!m) { currentMandatId = null; renderMandatsList(container); return; }
+    const f = m.form || (m.form = blankMandatForm());
+    if (!f.faits || !f.faits.length) f.faits = ['', '', ''];
+    if (!f.documents) f.documents = [
         { label: "Demande d'injonction immobilière", url: '' },
         { label: 'Injonction immobilière', url: '' }
     ];
-    if (!mandatData.officiers) mandatData.officiers = [];
-    // Migration : ancien format {type,id,label} -> simple string
-    mandatData.officiers = mandatData.officiers.map(o => typeof o === 'string' ? o : (o && o.label) || '').filter(Boolean);
-    if (typeof mandatData.note !== 'string') mandatData.note = 'Aucun propriétaire requis ou appartient à xxx pour local suspecté';
-    if (!mandatData.faits || !mandatData.faits.length) mandatData.faits = ['', '', ''];
+    if (!f.officiers) f.officiers = [];
+    f.officiers = f.officiers.map(o => typeof o === 'string' ? o : (o && o.label) || '').filter(Boolean);
+    const canWrite = canEditDoc('mandat', m.id);
+    const id = m.id;
 
-    const dateEl = document.getElementById('mandatDateField');
-    if (dateEl) dateEl.textContent = mandatData.date;
-    const noteEl = document.getElementById('mandatDossierNote');
-    if (noteEl) noteEl.textContent = mandatData.note;
+    container.innerHTML = `
+    <div class="dossier-toolbar" style="margin-bottom:18px;">
+        <button class="btn-toolbar btn-back" onclick="closeMandat()">← Retour</button>
+        <span style="font-size:15px;font-weight:700;color:#C9A227;flex:1;">${rapEsc(m.name)}</span>
+        <button class="btn-toolbar" onclick="window.print()" style="background:linear-gradient(135deg,#C9A227,#e0b830);color:#0D2B5E;font-weight:700;">🖨️ Imprimer / PDF</button>
+        ${getPermLevel() !== 'procureur' ? `<button class="dcard-btn" id="editorsbtn-mandat-${id}" style="${getEditorsBtnStyle('mandat',id)}" onclick="openEditorsModal('mandat','${id}','${rapEsc(m.name)}')">${getEditorsBtnLabel('mandat',id)}</button>` : ''}
+        ${canWrite ? `<button class="btn-toolbar" onclick="renameMandat('${id}')" style="background:rgba(201,162,39,0.15);color:#C9A227;border:1px solid rgba(201,162,39,0.3);">✏️ Renommer</button>` : ''}
+    </div>
 
-    // Champs simples persistés
-    const simpleFields = {
-        localisation: 'mandatLocalisation', description: 'mandatDescription', numero: 'mandatNumero',
-        enquete: 'mandatEnquete', agentsImpliques: 'mandatAgentsImpliques', nomPrenom: 'mandatNomPrenom',
-        dob: 'mandatDob', age: 'mandatAge', tel: 'mandatTel', adresse: 'mandatAdresse', infoText: 'mandatInfoText'
-    };
-    Object.entries(simpleFields).forEach(([key, id]) => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.value = mandatData[key] || '';
-            if (el.tagName === 'TEXTAREA') mandatAutoGrow(el);
-        }
-    });
+    <div class="mandat-wrap" style="padding-top:0;">
+        <div class="mandat-doc" contenteditable="false">
+            <!-- PAGE 1 -->
+            <div class="m-page">
+                <div class="m-header">
+                    <div class="m-eyebrow">— Crime Investigation Division —</div>
+                    <h1 class="m-title">🔎 MANDAT DE PERQUISITION</h1>
+                    <div class="m-subtitle">Criminal Investigation Division</div>
+                </div>
+                <div class="m-page-inner" style="padding-top:0;">
+                    <div style="text-align:center;">
+                        <div class="m-banner">🔒 Utilisation pour la division seulement</div>
+                    </div>
+
+                    <div class="m-section-box">
+                        <div class="m-section-header"><span class="m-sh-icon">🏛️</span> Informations du département</div>
+                        <div class="m-fields">
+                            <div class="m-field"><b>Date</b> <span id="mandatDateField">${rapEsc(f.date)}</span></div>
+                            <div class="m-field" style="display:block;">
+                                <b>Officiers</b>
+                                <div id="mandatOfficiersChips" style="display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 10px;"></div>
+                                <div style="position:relative;">
+                                    <button type="button" onclick="mandatToggleOfficiersDropdown()" style="width:100%;padding:10px 14px;border:1px solid rgba(201,162,39,0.3);border-radius:10px;font-size:13px;font-weight:700;background:rgba(13,43,94,0.15);color:#C9A227;text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-family:Georgia,serif;">
+                                        <span style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">👤</span> Sélectionner des agents...</span>
+                                        <span id="mandatOfficiersArrow" style="font-size:12px;transition:transform 0.2s;">▾</span>
+                                    </button>
+                                    <div id="mandatOfficiersDropdown" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:#f7f7f7;border:1px solid rgba(201,162,39,0.3);border-radius:12px;max-height:280px;overflow-y:auto;z-index:200;box-shadow:0 12px 32px rgba(0,0,0,0.3);padding:8px;">
+                                        <div style="padding:8px 10px 10px;border-bottom:1px solid rgba(201,162,39,0.15);margin-bottom:6px;">
+                                            <input type="text" id="mandatOfficiersSearch" placeholder="🔍 Rechercher..." oninput="mandatFilterOfficiersDropdown(this.value)" style="width:100%;padding:7px 10px;border:1px solid #ccc;border-radius:7px;font-size:13px;background:#fff;color:#111;box-sizing:border-box;font-family:Georgia,serif;">
+                                        </div>
+                                        <div id="mandatOfficiersList"></div>
+                                        <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(201,162,39,0.15);">
+                                            <input type="text" id="mandatOfficiersCustomInput" placeholder="@pseudo (hors liste)" onkeydown="if(event.key==='Enter'){event.preventDefault();mandatAddCustomOfficier();}" style="flex:1;padding:6px 9px;border:1px solid #ccc;border-radius:6px;font-size:12px;font-family:Georgia,serif;">
+                                            <button type="button" onclick="mandatAddCustomOfficier()" style="background:#555;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:700;">+</button>
+                                        </div>
+                                    </div>
+                                    <button type="button" onclick="mandatConfirmOfficiers()" style="width:100%;margin-top:8px;padding:10px;background:linear-gradient(135deg,#C9A227,#e0b830);color:#0D2B5E;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:900;letter-spacing:0.3px;box-shadow:0 3px 10px rgba(201,162,39,0.25);font-family:Georgia,serif;">✅ Confirmer la sélection</button>
+                                </div>
+                            </div>
+                            <div class="m-field">
+                                <b>Localisation</b>
+                                <input type="text" class="m-input" placeholder="Ex: CID Office" value="${rapEsc(f.localisation)}" oninput="mandatField('localisation',this.value)">
+                            </div>
+                            <div class="m-field m-big">
+                                <b>Description de la demande</b>
+                                <textarea class="m-textarea" placeholder="Demande de mandat de perquisition pour la propriété..." oninput="mandatField('description',this.value);mandatAutoGrow(this)">${rapEsc(f.description)}</textarea>
+                            </div>
+                            <div class="m-field">
+                                <b>N° de la propriété visée</b>
+                                <input type="text" class="m-input m-input-red" placeholder="N° xx - localisation" value="${rapEsc(f.numero)}" oninput="mandatField('numero',this.value)">
+                            </div>
+                            <div class="m-field">
+                                <b>Enquête</b>
+                                <input type="text" class="m-input" placeholder="Ex: Suspicion de trafic de stupéfiants" value="${rapEsc(f.enquete)}" oninput="mandatField('enquete',this.value)">
+                            </div>
+                            <div class="m-field">
+                                <b>Agents impliqués</b>
+                                <input type="text" class="m-input" placeholder="Noms des agents impliqués dans l'enquête..." value="${rapEsc(f.agentsImpliques)}" oninput="mandatField('agentsImpliques',this.value)">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="m-page-footer">Page 1 / 3 — CID Confidentiel</div>
+                </div>
+            </div>
+
+            <!-- PAGE 2 -->
+            <div class="m-page">
+                <div class="m-page-note">↓ Page suivante</div>
+                <div class="m-page-inner" style="padding-top:24px;">
+
+                    <div class="m-section-box">
+                        <div class="m-section-header"><span class="m-sh-icon">🧍</span> Informations du propriétaire</div>
+                        <div class="m-fields">
+                            <div class="m-field">
+                                <b>Nom prénom</b>
+                                <input type="text" class="m-input" placeholder="Inconnu" value="${rapEsc(f.nomPrenom)}" oninput="mandatField('nomPrenom',this.value)">
+                            </div>
+                            <div class="m-field-row">
+                                <div class="m-field">
+                                    <b>Date de naissance</b>
+                                    <input type="text" class="m-input" placeholder="Inconnu" value="${rapEsc(f.dob)}" oninput="mandatField('dob',this.value)">
+                                </div>
+                                <div class="m-field">
+                                    <b>Âge</b>
+                                    <input type="text" class="m-input" placeholder="Inconnu" value="${rapEsc(f.age)}" oninput="mandatField('age',this.value)">
+                                </div>
+                            </div>
+                            <div class="m-field">
+                                <b>Téléphone</b>
+                                <input type="text" class="m-input" placeholder="Inconnu" value="${rapEsc(f.tel)}" oninput="mandatField('tel',this.value)">
+                            </div>
+                            <div class="m-field">
+                                <b>Adresse</b>
+                                <input type="text" class="m-input" placeholder="Inconnu" value="${rapEsc(f.adresse)}" oninput="mandatField('adresse',this.value)">
+                            </div>
+                            <div class="m-field" style="display:block;">
+                                <b>Faits</b>
+                                <div id="mandatFaitsList" style="display:flex;flex-direction:column;gap:6px;margin-top:4px;"></div>
+                                <button type="button" class="m-mini-add" onclick="mandatAddFait()">+ Ajouter un fait</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="m-section-box">
+                        <div class="m-section-header"><span class="m-sh-icon">🗂️</span> Informations</div>
+                        <div style="padding:14px 16px 18px;">
+                            <textarea class="m-textarea m-info-text" placeholder="Décrivez le contexte de l'enquête : observations, éléments déclencheurs, activités suspectes constatées..." oninput="mandatField('infoText',this.value);mandatAutoGrow(this)">${rapEsc(f.infoText)}</textarea>
+
+                            <div class="m-timeline" id="mandatEntriesList"></div>
+                            <button class="m-add-entry-btn" onclick="mandatAddEntry()">+ Ajouter une information (texte + image)</button>
+                        </div>
+                    </div>
+                    <div class="m-page-footer">Page 2 / 3 — CID Confidentiel</div>
+                </div>
+            </div>
+
+            <!-- PAGE 3 -->
+            <div class="m-page">
+                <div class="m-page-inner" style="padding-top:28px;">
+                    <div class="m-section-box">
+                        <div class="m-section-header"><span class="m-sh-icon">📎</span> Pièces du dossier</div>
+                        <div style="padding:16px 16px 18px;">
+                            <div class="m-etc">(...) suite de l'enquête</div>
+                            <div id="mandatDocumentsList" class="m-doc-list"></div>
+                            <button class="m-add-entry-btn" onclick="mandatAddDocument()">+ Ajouter un lien</button>
+                            <div class="m-dossier-note" contenteditable="true" oninput="mandatNoteField(this.textContent)" id="mandatDossierNote">${rapEsc(f.note)}</div>
+                        </div>
+                    </div>
+                    <div class="m-page-footer">Page 3 / 3 — CID Confidentiel</div>
+                </div>
+            </div>
+        </div>
+    </div>`;
 
     mandatRenderEntries();
     mandatRenderDocuments();
@@ -7394,7 +7512,9 @@ function mandatInit() {
 }
 
 function mandatField(key, value) {
-    mandatData[key] = value;
+    const f = mandatForm();
+    if (!f) return;
+    f[key] = value;
     mandatSaveData();
 }
 
@@ -7407,41 +7527,48 @@ function mandatAutoGrow(el) {
 // ---- Faits (liste dynamique) ----
 function mandatRenderFaits() {
     const container = document.getElementById('mandatFaitsList');
-    if (!container) return;
-    if (!mandatData.faits || !mandatData.faits.length) mandatData.faits = ['', '', ''];
-    container.innerHTML = mandatData.faits.map((f, i) => `
+    const f = mandatForm();
+    if (!container || !f) return;
+    if (!f.faits || !f.faits.length) f.faits = ['', '', ''];
+    container.innerHTML = f.faits.map((val, i) => `
         <div class="m-fait-row">
-            <input type="text" value="${rapEsc(f)}" placeholder="Décrire un fait..." oninput="mandatFaitField(${i},this.value)">
-            ${mandatData.faits.length > 1 ? `<button type="button" class="m-fait-del" onclick="mandatDelFait(${i})" title="Supprimer">✕</button>` : ''}
+            <input type="text" value="${rapEsc(val)}" placeholder="Décrire un fait..." oninput="mandatFaitField(${i},this.value)">
+            ${f.faits.length > 1 ? `<button type="button" class="m-fait-del" onclick="mandatDelFait(${i})" title="Supprimer">✕</button>` : ''}
         </div>
     `).join('');
 }
 
 function mandatAddFait() {
-    if (!mandatData.faits) mandatData.faits = [];
-    mandatData.faits.push('');
+    const f = mandatForm();
+    if (!f) return;
+    if (!f.faits) f.faits = [];
+    f.faits.push('');
     mandatSaveData();
     mandatRenderFaits();
 }
 
 function mandatFaitField(i, value) {
-    if (!mandatData.faits) return;
-    mandatData.faits[i] = value;
+    const f = mandatForm();
+    if (!f || !f.faits) return;
+    f.faits[i] = value;
     mandatSaveData();
 }
 
 function mandatDelFait(i) {
-    mandatData.faits.splice(i, 1);
-    if (!mandatData.faits.length) mandatData.faits = [''];
+    const f = mandatForm();
+    if (!f) return;
+    f.faits.splice(i, 1);
+    if (!f.faits.length) f.faits = [''];
     mandatSaveData();
     mandatRenderFaits();
 }
 
 function mandatRenderEntries() {
     const container = document.getElementById('mandatEntriesList');
-    if (!container) return;
-    if (!mandatData.entries) mandatData.entries = [];
-    container.innerHTML = mandatData.entries.map((entry, i) => `
+    const f = mandatForm();
+    if (!container || !f) return;
+    if (!f.entries) f.entries = [];
+    container.innerHTML = f.entries.map((entry, i) => `
         <div class="m-entry-item">
             <div class="m-entry-top">
                 <span class="m-pin">📌</span>
@@ -7466,35 +7593,42 @@ function mandatRenderEntries() {
 }
 
 function mandatAddEntry() {
-    if (!mandatData.entries) mandatData.entries = [];
-    mandatData.entries.push({ date: new Date().toLocaleDateString('fr-FR'), text: '', photos: [] });
+    const f = mandatForm();
+    if (!f) return;
+    if (!f.entries) f.entries = [];
+    f.entries.push({ date: new Date().toLocaleDateString('fr-FR'), text: '', photos: [] });
     mandatSaveData();
     mandatRenderEntries();
 }
 
 function mandatDelEntry(i) {
-    mandatData.entries.splice(i, 1);
+    const f = mandatForm();
+    if (!f) return;
+    f.entries.splice(i, 1);
     mandatSaveData();
     mandatRenderEntries();
 }
 
 function mandatEntryField(i, value) {
-    if (!mandatData.entries[i]) return;
-    mandatData.entries[i].text = value;
+    const f = mandatForm();
+    if (!f || !f.entries[i]) return;
+    f.entries[i].text = value;
     mandatSaveData();
 }
 
 function mandatEntryDateField(i, value) {
-    if (!mandatData.entries[i]) return;
-    mandatData.entries[i].date = value;
+    const f = mandatForm();
+    if (!f || !f.entries[i]) return;
+    f.entries[i].date = value;
     mandatSaveData();
 }
 
 async function mandatAddPhoto(i, input) {
-    if (!input.files.length) return;
+    const f = mandatForm();
+    if (!f || !input.files.length) return;
     const urls = await uploadFilesToImgbb(input.files);
-    if (!mandatData.entries[i].photos) mandatData.entries[i].photos = [];
-    mandatData.entries[i].photos.push(...urls);
+    if (!f.entries[i].photos) f.entries[i].photos = [];
+    f.entries[i].photos.push(...urls);
     mandatSaveData();
     mandatRenderEntries();
 }
@@ -7502,24 +7636,29 @@ async function mandatAddPhoto(i, input) {
 async function mandatDropPhoto(i, e) {
     e.preventDefault();
     e.currentTarget.classList.remove('drag-over');
+    const f = mandatForm();
+    if (!f) return;
     const urls = await uploadFilesToImgbb(e.dataTransfer.files);
-    if (!mandatData.entries[i].photos) mandatData.entries[i].photos = [];
-    mandatData.entries[i].photos.push(...urls);
+    if (!f.entries[i].photos) f.entries[i].photos = [];
+    f.entries[i].photos.push(...urls);
     mandatSaveData();
     mandatRenderEntries();
 }
 
 function mandatDelPhoto(i, pi) {
-    mandatData.entries[i].photos.splice(pi, 1);
+    const f = mandatForm();
+    if (!f) return;
+    f.entries[i].photos.splice(pi, 1);
     mandatSaveData();
     mandatRenderEntries();
 }
 
 function mandatRenderDocuments() {
     const container = document.getElementById('mandatDocumentsList');
-    if (!container) return;
-    if (!mandatData.documents) mandatData.documents = [];
-    container.innerHTML = mandatData.documents.map((doc, i) => `
+    const f = mandatForm();
+    if (!container || !f) return;
+    if (!f.documents) f.documents = [];
+    container.innerHTML = f.documents.map((doc, i) => `
         <div class="m-doc-item">
             <input type="text" class="m-doc-label" value="${rapEsc(doc.label)}" placeholder="Nom du document..." oninput="mandatDocField(${i},'label',this.value)">
             <input type="text" class="m-doc-url" value="${rapEsc(doc.url)}" placeholder="🔗 Coller le lien du document..." oninput="mandatDocField(${i},'url',this.value)">
@@ -7530,15 +7669,18 @@ function mandatRenderDocuments() {
 }
 
 function mandatAddDocument() {
-    if (!mandatData.documents) mandatData.documents = [];
-    mandatData.documents.push({ label: '', url: '' });
+    const f = mandatForm();
+    if (!f) return;
+    if (!f.documents) f.documents = [];
+    f.documents.push({ label: '', url: '' });
     mandatSaveData();
     mandatRenderDocuments();
 }
 
 function mandatDocField(i, field, value) {
-    if (!mandatData.documents[i]) return;
-    mandatData.documents[i][field] = value;
+    const f = mandatForm();
+    if (!f || !f.documents[i]) return;
+    f.documents[i][field] = value;
     mandatSaveData();
     if (field === 'url') {
         const link = document.getElementById('mandatDocOpen-' + i);
@@ -7550,13 +7692,17 @@ function mandatDocField(i, field, value) {
 }
 
 function mandatDelDocument(i) {
-    mandatData.documents.splice(i, 1);
+    const f = mandatForm();
+    if (!f) return;
+    f.documents.splice(i, 1);
     mandatSaveData();
     mandatRenderDocuments();
 }
 
 function mandatNoteField(value) {
-    mandatData.note = value;
+    const f = mandatForm();
+    if (!f) return;
+    f.note = value;
     mandatSaveData();
 }
 
@@ -7585,9 +7731,10 @@ function mandatOfficierChipHtml(label, i) {
 
 function mandatRenderOfficiers() {
     const chips = document.getElementById('mandatOfficiersChips');
-    if (!chips) return;
-    if (!mandatData.officiers) mandatData.officiers = [];
-    chips.innerHTML = mandatData.officiers.map((label, i) => mandatOfficierChipHtml(label, i)).join('')
+    const f = mandatForm();
+    if (!chips || !f) return;
+    if (!f.officiers) f.officiers = [];
+    chips.innerHTML = f.officiers.map((label, i) => mandatOfficierChipHtml(label, i)).join('')
         || `<span style="font-size:13px;color:#888;font-style:italic;">Aucun officier sélectionné</span>`;
 }
 
@@ -7615,8 +7762,9 @@ function mandatOfficierItemHtml(a, current) {
 async function mandatPopulateOfficiersList() {
     if (!_editorAccountsCache.length) await loadEditorAccounts();
     const list = document.getElementById('mandatOfficiersList');
-    if (!list) return;
-    const current = mandatData.officiers || [];
+    const f = mandatForm();
+    if (!list || !f) return;
+    const current = f.officiers || [];
     list.innerHTML = _editorAccountsCache.map(a => mandatOfficierItemHtml(a, current)).join('')
         || `<div style="font-size:12px;color:#888;font-style:italic;padding:6px;">Aucun compte enregistré</div>`;
 }
@@ -7646,9 +7794,11 @@ function mandatToggleOfficiersDropdown() {
 function mandatConfirmOfficiers() {
     const dd = document.getElementById('mandatOfficiersDropdown');
     const list = document.getElementById('mandatOfficiersList');
+    const f = mandatForm();
+    if (!f) return;
     const checked = [...(list||dd||document).querySelectorAll('input[type=checkbox]:checked')].map(cb => cb.value);
-    const customOnes = (mandatData.officiers||[]).filter(o => o.startsWith('@'));
-    mandatData.officiers = [...checked, ...customOnes];
+    const customOnes = (f.officiers||[]).filter(o => o.startsWith('@'));
+    f.officiers = [...checked, ...customOnes];
     mandatSaveData();
     mandatRenderOfficiers();
     if (dd) dd.style.display = 'none';
@@ -7658,22 +7808,67 @@ function mandatConfirmOfficiers() {
 
 function mandatAddCustomOfficier() {
     const input = document.getElementById('mandatOfficiersCustomInput');
-    if (!input) return;
+    const f = mandatForm();
+    if (!input || !f) return;
     let val = input.value.trim();
     if (!val) return;
     if (!val.startsWith('@')) val = '@' + val;
-    if (!mandatData.officiers) mandatData.officiers = [];
-    if (!mandatData.officiers.includes(val)) mandatData.officiers.push(val);
+    if (!f.officiers) f.officiers = [];
+    if (!f.officiers.includes(val)) f.officiers.push(val);
     input.value = '';
     mandatSaveData();
     mandatRenderOfficiers();
 }
 
 function mandatRemoveOfficier(i) {
-    mandatData.officiers.splice(i, 1);
+    const f = mandatForm();
+    if (!f) return;
+    f.officiers.splice(i, 1);
     mandatSaveData();
     mandatRenderOfficiers();
 }
+
+// ---- Modal créer/renommer un mandat ----
+let _mandModalMode = null, _mandModalTargetId = null;
+function openMandatModal(mode, id=null, defaultVal='Mandat — ') {
+    _mandModalMode = mode; _mandModalTargetId = id;
+    const modal = document.getElementById('mandatNameModal');
+    const inp = document.getElementById('mandatNameModalInput');
+    const title = document.getElementById('mandatNameModalTitle');
+    if (!modal) return;
+    title.textContent = mode === 'create' ? 'Créer un mandat' : 'Renommer le mandat';
+    inp.value = defaultVal;
+    modal.classList.add('active');
+    setTimeout(() => inp.focus(), 100);
+}
+function closeMandatModal() {
+    const modal = document.getElementById('mandatNameModal');
+    if (modal) modal.classList.remove('active');
+    _mandModalMode = null; _mandModalTargetId = null;
+}
+async function confirmMandatModal() {
+    const name = document.getElementById('mandatNameModalInput').value.trim();
+    if (!name) { alert('Veuillez entrer un nom'); return; }
+    const mode = _mandModalMode, id = _mandModalTargetId;
+    closeMandatModal();
+    if (mode === 'create') await _doCreateMandat(name);
+    else if (mode === 'rename') await _doRenameMandat(id, name);
+}
+(function() {
+    const el = document.createElement('div');
+    el.innerHTML = `<div id="mandatNameModal" class="modal" onclick="if(event.target===this)closeMandatModal()">
+        <div class="modal-dialog">
+            <h2 id="mandatNameModalTitle">Créer un mandat</h2>
+            <input type="text" id="mandatNameModalInput" placeholder="Nom du mandat">
+            <div class="modal-actions">
+                <button class="btn-confirm" onclick="confirmMandatModal()">Confirmer</button>
+                <button class="btn-cancel" onclick="closeMandatModal()">Annuler</button>
+            </div>
+        </div>
+    </div>`;
+    document.body.appendChild(el.firstElementChild);
+    document.getElementById('mandatNameModalInput').addEventListener('keydown', e => { if(e.key==='Enter') confirmMandatModal(); });
+})();
 
 // ---- Éditeur ----
 function renderRapportEditor(container) {
