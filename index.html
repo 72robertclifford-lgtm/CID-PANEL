@@ -1197,6 +1197,7 @@
                     <div class="nav-dropdown-item active" data-tab="dossiers" onclick="selectDossiersMenu('dossiers')">📁 Dossiers</div>
                     <div class="nav-dropdown-item" data-tab="deposition" onclick="selectDossiersMenu('deposition')">📄 Interrogatoire</div>
                     <div class="nav-dropdown-item" data-tab="rapport" onclick="selectDossiersMenu('rapport')">📋 Rapport</div>
+                    <div class="nav-dropdown-item" data-tab="mandat" onclick="selectDossiersMenu('mandat')">📜 Mandat</div>
                 </div>
             </div>
             <button class="nav-tab" id="tabCarte" onclick="switchMainTab('carte')" style="display:none;">
@@ -1242,6 +1243,201 @@
         <!-- TAB: DEPOSITION -->
         <div class="tab-content" id="tabContentDeposition">
             <div id="mainDepositionContent"></div>
+        </div>
+
+        <!-- TAB: MANDAT DE PERQUISITION -->
+        <div class="tab-content" id="tabContentMandat">
+            <style>
+                .mandat-wrap { background:#0f1628; padding:24px 10px 60px; border-radius:12px; }
+                .mandat-toolbar { display:flex; justify-content:flex-end; gap:10px; max-width:700px; margin:0 auto 16px; }
+                .mandat-toolbar button {
+                    background:transparent;color:#C9A227;border:1px solid rgba(201,162,39,0.4);
+                    padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;
+                }
+                .mandat-toolbar button:hover { background:rgba(201,162,39,0.12); }
+                .mandat-doc { font-family: Georgia,'Times New Roman',serif; color:#111; }
+                .mandat-doc .m-page {
+                    background:#fff; width:700px; max-width:100%; margin:0 auto 30px auto;
+                    padding:40px 45px 50px 45px; box-shadow:0 4px 18px rgba(0,0,0,0.35);
+                }
+                .mandat-doc .m-page-note { text-align:right; font-style:italic; font-size:13px; color:#333; margin-bottom:10px; }
+                .mandat-doc h1.m-title { text-align:center; font-size:28px; letter-spacing:1px; margin:0 0 4px 0; }
+                .mandat-doc .m-subtitle { text-align:center; font-size:15px; letter-spacing:3px; margin:0 0 22px 0; color:#222; }
+                .mandat-doc .m-banner {
+                    background:#b3b3b3; text-align:center; font-weight:bold; letter-spacing:1px;
+                    padding:8px 0; border:1px solid #888; margin-bottom:18px; font-size:14px;
+                }
+                .mandat-doc .m-section-box { border:1px solid #111; margin-bottom:22px; }
+                .mandat-doc .m-section-header { text-align:center; font-weight:bold; padding:8px 0; border-bottom:1px solid #111; position:relative; letter-spacing:0.5px; }
+                .mandat-doc .m-section-header .m-caret { position:absolute; right:12px; top:50%; transform:translateY(-50%); font-size:11px; }
+                .mandat-doc .m-field-row { display:flex; }
+                .mandat-doc .m-field { border-bottom:1px solid #111; padding:10px 14px; flex:1; font-size:14.5px; min-height:22px; outline:none; }
+                .mandat-doc .m-field:last-child { border-bottom:none; }
+                .mandat-doc .m-field-row .m-field:not(:last-child) { border-right:1px solid #111; }
+                .mandat-doc .m-field.m-big { padding-top:12px; padding-bottom:12px; min-height:90px; }
+                .mandat-doc .m-field.m-faits { min-height:130px; }
+                .mandat-doc .m-highlight-red { color:#c0392b; font-weight:bold; }
+                .mandat-doc .m-highlight-red em { font-style:italic; font-weight:bold; }
+                .mandat-doc ul.m-faits-list { margin:6px 0 0 0; padding-left:22px; }
+                .mandat-doc ul.m-faits-list li { font-weight:bold; margin-bottom:4px; }
+                .mandat-doc .m-info-text { font-size:14px; line-height:1.6; padding:16px 4px 4px 4px; }
+                .mandat-doc .m-timeline { margin-top:14px; padding:0 4px; }
+                .mandat-doc .m-pin-entry { margin-bottom:10px; font-size:14px; }
+                .mandat-doc .m-plain-entry { font-size:14px; margin-bottom:2px; }
+                .mandat-doc .m-pin { color:#d81b60; margin-right:4px; }
+                .mandat-doc .m-link { text-decoration:underline; font-style:italic; }
+                .mandat-doc .m-etc { font-style:italic; margin:14px 0 18px 4px; color:#333; }
+                .mandat-doc .m-dossier-header { color:#d81b60; font-weight:bold; font-size:14.5px; margin:10px 0 6px 4px; }
+                .mandat-doc ul.m-dossier-list { margin:0 0 6px 0; padding-left:26px; font-size:14px; }
+                .mandat-doc ul.m-dossier-list li { margin-bottom:4px; }
+                .mandat-doc .m-dossier-note { color:#c0392b; font-style:italic; font-weight:bold; margin-left:4px; font-size:14px; }
+                .mandat-doc .m-entry-item { border:1px solid #ddd; border-radius:6px; padding:10px 12px; margin-bottom:12px; background:#fafafa; }
+                .mandat-doc .m-entry-top { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+                .mandat-doc .m-entry-date { font-size:13px; color:#555; white-space:nowrap; font-weight:bold; }
+                .mandat-doc .m-entry-text { flex:1; border:none; border-bottom:1px solid #ccc; background:transparent; font-family:inherit; font-size:14px; padding:3px 4px; outline:none; }
+                .mandat-doc .m-entry-del { background:none; border:none; color:#c0392b; cursor:pointer; font-size:14px; padding:2px 6px; }
+                .mandat-doc .m-entry-photos { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+                .mandat-doc .m-entry-photo { position:relative; display:inline-block; }
+                .mandat-doc .m-entry-photo img { width:90px; height:68px; object-fit:cover; border-radius:6px; cursor:pointer; border:1px solid #ccc; }
+                .mandat-doc .m-entry-photo button { position:absolute; top:-6px; right:-6px; background:#d32f2f; color:#fff; border:none; border-radius:50%; width:18px; height:18px; cursor:pointer; font-size:10px; line-height:1; }
+                .mandat-doc .m-entry-dropzone { border:1px dashed #bbb; border-radius:6px; padding:8px 10px; text-align:center; font-size:12px; color:#666; cursor:pointer; margin-top:6px; background:#fff; }
+                .mandat-doc .m-entry-dropzone.drag-over { background:#eef2ff; border-color:#7B2D8B; }
+                .mandat-doc .m-add-entry-btn {
+                    width:100%; padding:10px; margin-top:6px; background:#f2f2f2; color:#333;
+                    border:1px dashed #999; border-radius:6px; cursor:pointer; font-size:13px; font-weight:700;
+                    font-family:inherit;
+                }
+                .mandat-doc .m-add-entry-btn:hover { background:#e8e8e8; }
+                .mandat-doc .m-doc-list { margin:6px 0 4px 4px; }
+                .mandat-doc .m-doc-item { display:flex; align-items:center; gap:6px; margin-bottom:8px; }
+                .mandat-doc .m-doc-item::before { content:'•'; color:#111; font-weight:bold; }
+                .mandat-doc .m-doc-label { flex:1.2; border:none; border-bottom:1px solid #ccc; background:transparent; font-family:inherit; font-size:14px; padding:3px 4px; outline:none; }
+                .mandat-doc .m-doc-url { flex:1; border:none; border-bottom:1px dashed #ccc; background:transparent; font-family:inherit; font-size:12.5px; color:#555; padding:3px 4px; outline:none; }
+                .mandat-doc .m-doc-open { font-size:12px; text-decoration:underline; font-style:italic; color:#1a4080; white-space:nowrap; }
+                .mandat-doc .m-dossier-note[contenteditable="true"] { cursor:text; outline:none; }
+                .mandat-doc .m-officiers-field { display:flex; align-items:center; flex-wrap:wrap; gap:8px; position:relative; }
+                .mandat-doc .m-officiers-chips { display:flex; flex-wrap:wrap; gap:6px; }
+                .mandat-doc .m-officier-chip {
+                    display:inline-flex; align-items:center; gap:5px; background:#eef2ff; color:#1a237e;
+                    border:1px solid #c5cae9; border-radius:14px; padding:3px 8px 3px 10px; font-size:13px; font-weight:600;
+                }
+                .mandat-doc .m-officier-chip button {
+                    background:none; border:none; color:#c0392b; cursor:pointer; font-size:12px; padding:0 2px; line-height:1;
+                }
+                .mandat-doc .m-officiers-add-btn {
+                    background:#f2f2f2; border:1px solid #999; border-radius:14px; padding:3px 12px;
+                    font-size:12px; font-weight:700; cursor:pointer; font-family:inherit; color:#333;
+                }
+                .mandat-doc .m-officiers-add-btn:hover { background:#e8e8e8; }
+                .mandat-doc .m-officiers-dropdown {
+                    display:none; position:absolute; top:100%; left:0; margin-top:6px; background:#fff;
+                    border:1px solid #999; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.25);
+                    padding:10px; z-index:50; width:260px; max-height:260px; overflow-y:auto;
+                }
+                .mandat-doc .m-officiers-dropdown.open { display:block; }
+                .mandat-doc .m-officiers-checklist label {
+                    display:flex; align-items:center; gap:8px; padding:5px 4px; font-size:13px; cursor:pointer; border-radius:5px;
+                }
+                .mandat-doc .m-officiers-checklist label:hover { background:#f5f5f5; }
+                .mandat-doc .m-officiers-checklist .m-og-empty { font-size:12px; color:#888; font-style:italic; padding:4px; }
+                .mandat-doc .m-officiers-custom-row { display:flex; gap:6px; margin-top:8px; border-top:1px solid #eee; padding-top:8px; }
+                .mandat-doc .m-officiers-custom-row input { flex:1; font-family:inherit; font-size:12.5px; padding:5px 7px; border:1px solid #ccc; border-radius:5px; }
+                .mandat-doc .m-officiers-custom-row button { background:#1a4080; color:#fff; border:none; border-radius:5px; padding:5px 12px; cursor:pointer; font-weight:700; }
+                @media print {
+                    .mandat-toolbar, .main-nav, .header, header { display:none !important; }
+                    .mandat-wrap { background:#fff; padding:0; }
+                    .mandat-doc .m-page { box-shadow:none; margin:0; page-break-after:always; }
+                }
+            </style>
+
+            <div class="mandat-wrap">
+                <div class="mandat-toolbar">
+                    <button onclick="window.print()">🖨️ Imprimer / Exporter PDF</button>
+                </div>
+
+                <div class="mandat-doc" contenteditable="false">
+                    <!-- PAGE 1 -->
+                    <div class="m-page">
+                        <h1 class="m-title">MANDAT DE PERQUISITION</h1>
+                        <div class="m-subtitle">CRIMINAL INVESTIGATION DIVISION</div>
+
+                        <div class="m-banner">UTILISATION POUR LA DIVISION SEULEMENT</div>
+
+                        <div class="m-section-box">
+                            <div class="m-section-header">INFORMATIONS DU DÉPARTEMENT<span class="m-caret">▼</span></div>
+                            <div class="m-field"><b>DATE:</b> <span id="mandatDateField">xx/xx/xx25</span></div>
+                            <div class="m-field m-officiers-field">
+                                <b>OFFICIERS:</b>
+                                <div id="mandatOfficiersChips" class="m-officiers-chips"></div>
+                                <button type="button" class="m-officiers-add-btn" onclick="mandatToggleOfficiersDropdown(event)">+ Ajouter</button>
+                                <div id="mandatOfficiersDropdown" class="m-officiers-dropdown">
+                                    <div id="mandatOfficiersCheckList" class="m-officiers-checklist"></div>
+                                    <div class="m-officiers-custom-row">
+                                        <input type="text" id="mandatOfficiersCustomInput" placeholder="@pseudo (hors liste)" onkeydown="if(event.key==='Enter'){mandatAddCustomOfficier();}">
+                                        <button type="button" onclick="mandatAddCustomOfficier()">+</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="m-field" contenteditable="true"><b>LOCALISATION:</b> CID Office</div>
+                            <div class="m-field m-big" contenteditable="true">
+                                <b>DESCRIPTION DE LA DEMANDE:</b><br><br>
+                                Demande de mandat de perquisition pour la propriété
+                                <span class="m-highlight-red">N° xx - <em>localisation</em></span>
+                            </div>
+                            <div class="m-field" contenteditable="true"><b>ENQUÊTE:</b> Suspicion de xxx</div>
+                            <div class="m-field" contenteditable="true"><b>AGENTS IMPLIQUÉS:</b></div>
+                        </div>
+                    </div>
+
+                    <!-- PAGE 2 -->
+                    <div class="m-page">
+                        <div class="m-page-note">Page suivante...</div>
+
+                        <div class="m-section-box">
+                            <div class="m-section-header">INFORMATIONS DU PROPRIÉTAIRE</div>
+                            <div class="m-field" contenteditable="true"><b>NOM PRÉNOM:</b> Inconnu</div>
+                            <div class="m-field-row">
+                                <div class="m-field" contenteditable="true"><b>DOB:</b> Inconnu</div>
+                                <div class="m-field" contenteditable="true"><b>ÂGE:</b> Inconnu</div>
+                            </div>
+                            <div class="m-field" contenteditable="true"><b>TÉL:</b> Inconnu</div>
+                            <div class="m-field" contenteditable="true"><b>ADRESSE:</b> Inconnu</div>
+                            <div class="m-field m-faits" contenteditable="true">
+                                <b>FAITS:</b>
+                                <ul class="m-faits-list">
+                                    <li>xxx</li>
+                                    <li>xxxxx</li>
+                                    <li>xx</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="m-section-box">
+                            <div class="m-section-header">INFORMATIONS</div>
+                            <div class="m-info-text" contenteditable="true">
+                                Plusieurs petites frappes ont été vues et ont été contrôlées à la sortie du potentiel
+                                laboratoire de champignons rouges. Des saisies ont été effectuées mais également
+                                des interrogatoires.
+                            </div>
+
+                            <div class="m-timeline" id="mandatEntriesList"></div>
+                            <button class="m-add-entry-btn" onclick="mandatAddEntry()">+ Ajouter une information (texte + image)</button>
+                        </div>
+                    </div>
+
+                    <!-- PAGE 3 -->
+                    <div class="m-page">
+                        <div class="m-section-box">
+                            <div class="m-etc">Ect..</div>
+
+                            <div class="m-dossier-header"><span class="m-pin">📌</span> Pièces du dossier</div>
+                            <div id="mandatDocumentsList" class="m-doc-list"></div>
+                            <button class="m-add-entry-btn" onclick="mandatAddDocument()">+ Ajouter un lien</button>
+                            <div class="m-dossier-note" contenteditable="true" oninput="mandatNoteField(this.textContent)" id="mandatDossierNote">Aucun propriétaire requis ou appartient à xxx pour local suspecté</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -4561,7 +4757,7 @@ function switchMainTab(tab) {
     if (tab !== 'carte' && typeof _carte3DActive !== 'undefined' && _carte3DActive) { _carte3DActive = false; _destroy3DTerrain(); }
 
     const tabIdMap = { dossiers:'tabDossiers', carte:'tabCarte', orgchart:'tabOrgChart', documents:'tabDocuments', deposition:'tabDeposition', rapport:'tabRapport' };
-    const contentIdMap = { dossiers:'tabContentDossiers', carte:'tabContentCarte', orgchart:'tabContentOrgChart', documents:'tabContentDocuments', deposition:'tabContentDeposition', rapport:'tabContentRapport' };
+    const contentIdMap = { dossiers:'tabContentDossiers', carte:'tabContentCarte', orgchart:'tabContentOrgChart', documents:'tabContentDocuments', deposition:'tabContentDeposition', rapport:'tabContentRapport', mandat:'tabContentMandat' };
     Object.entries(tabIdMap).forEach(([k,id]) => {
         const el = document.getElementById(id);
         if (el) el.classList.toggle('active', k === tab);
@@ -4572,11 +4768,11 @@ function switchMainTab(tab) {
     });
 
     // --- Dropdown Dossiers/Interrogatoire : le déclencheur reste actif pour les deux ---
-    const inDossiersGroup = (tab === 'dossiers' || tab === 'deposition' || tab === 'rapport');
+    const inDossiersGroup = (tab === 'dossiers' || tab === 'deposition' || tab === 'rapport' || tab === 'mandat');
     const dossiersBtn = document.getElementById('tabDossiers');
     if (dossiersBtn) dossiersBtn.classList.toggle('active', inDossiersGroup);
     const dossiersLabel = document.getElementById('dossiersTabLabel');
-    if (dossiersLabel && inDossiersGroup) dossiersLabel.textContent = tab === 'deposition' ? '📄 Interrogatoire' : tab === 'rapport' ? '📋 Rapport' : '📁 Dossiers';
+    if (dossiersLabel && inDossiersGroup) dossiersLabel.textContent = tab === 'deposition' ? '📄 Interrogatoire' : tab === 'rapport' ? '📋 Rapport' : tab === 'mandat' ? '📜 Mandat' : '📁 Dossiers';
     document.querySelectorAll('#dossiersDropdownMenu .nav-dropdown-item').forEach(it => {
         it.classList.toggle('active', it.dataset.tab === tab);
     });
@@ -4587,6 +4783,7 @@ function switchMainTab(tab) {
     if (tab === 'documents') renderDocumentsTab();
     if (tab === 'deposition') { currentDepositionId = null; renderMainDepositionTab(); }
     if (tab === 'rapport') { currentRapportId = null; renderMainRapportTab(); }
+    if (tab === 'mandat') { mandatInit(); }
     if (tab === 'carte') { initCarte(); setTimeout(() => { if(_carteMap) { _carteMap.invalidateSize(true); } }, 300); }
     // Onglet Carte : la page prend toute la largeur de l'écran pour un affichage plus grand
     const dossiersContainer = document.getElementById('dossiersPageContainer');
@@ -7018,6 +7215,246 @@ function rapDelPhoto(id, bi, pi) {
     rap.form.blocs[bi].photos.splice(pi, 1);
     saveCidRapports();
     renderMainRapportTab();
+}
+
+// ==================== MANDAT DE PERQUISITION ====================
+function mandatLoadData() {
+    try {
+        const raw = localStorage.getItem('cid_mandat_data');
+        if (raw) return JSON.parse(raw);
+    } catch(e) {}
+    return {
+        date: '',
+        entries: [],
+        officiers: [],
+        documents: [
+            { label: "Demande d'injonction immobilière", url: '' },
+            { label: 'Injonction immobilière', url: '' }
+        ],
+        note: 'Aucun propriétaire requis ou appartient à xxx pour local suspecté'
+    };
+}
+let mandatData = mandatLoadData();
+
+function mandatSaveData() {
+    try { localStorage.setItem('cid_mandat_data', JSON.stringify(mandatData)); } catch(e) {}
+}
+
+function mandatInit() {
+    if (!mandatData.date) {
+        mandatData.date = new Date().toLocaleDateString('fr-FR');
+        mandatSaveData();
+    }
+    if (!mandatData.documents) mandatData.documents = [
+        { label: "Demande d'injonction immobilière", url: '' },
+        { label: 'Injonction immobilière', url: '' }
+    ];
+    if (!mandatData.officiers) mandatData.officiers = [];
+    if (typeof mandatData.note !== 'string') mandatData.note = 'Aucun propriétaire requis ou appartient à xxx pour local suspecté';
+    const dateEl = document.getElementById('mandatDateField');
+    if (dateEl) dateEl.textContent = mandatData.date;
+    const noteEl = document.getElementById('mandatDossierNote');
+    if (noteEl) noteEl.textContent = mandatData.note;
+    mandatRenderEntries();
+    mandatRenderDocuments();
+    mandatRenderOfficiers();
+}
+
+function mandatRenderEntries() {
+    const container = document.getElementById('mandatEntriesList');
+    if (!container) return;
+    if (!mandatData.entries) mandatData.entries = [];
+    container.innerHTML = mandatData.entries.map((entry, i) => `
+        <div class="m-entry-item">
+            <div class="m-entry-top">
+                <span class="m-pin">📌</span>
+                <span class="m-entry-date">${rapEsc(entry.date)}</span>
+                <input type="text" class="m-entry-text" value="${rapEsc(entry.text)}" placeholder="Description de l'information..." oninput="mandatEntryField(${i},this.value)">
+                <button class="m-entry-del" onclick="mandatDelEntry(${i})" title="Supprimer">✕</button>
+            </div>
+            <div class="m-entry-dropzone" ondrop="mandatDropPhoto(${i},event)" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" onclick="this.querySelector('input').click()">
+                📸 Glissez une image ici ou cliquez
+                <input type="file" class="file-input" accept="image/*" multiple style="display:none;" onchange="mandatAddPhoto(${i},this)">
+            </div>
+            ${(entry.photos||[]).length ? `
+            <div class="m-entry-photos">
+                ${(entry.photos||[]).map((ph, pi) => `
+                <div class="m-entry-photo">
+                    <img src="${ph}" onclick="openPhoto('${ph}')">
+                    <button onclick="mandatDelPhoto(${i},${pi})">✕</button>
+                </div>`).join('')}
+            </div>` : ''}
+        </div>
+    `).join('');
+}
+
+function mandatAddEntry() {
+    if (!mandatData.entries) mandatData.entries = [];
+    mandatData.entries.push({ date: new Date().toLocaleDateString('fr-FR'), text: '', photos: [] });
+    mandatSaveData();
+    mandatRenderEntries();
+}
+
+function mandatDelEntry(i) {
+    mandatData.entries.splice(i, 1);
+    mandatSaveData();
+    mandatRenderEntries();
+}
+
+function mandatEntryField(i, value) {
+    if (!mandatData.entries[i]) return;
+    mandatData.entries[i].text = value;
+    mandatSaveData();
+}
+
+async function mandatAddPhoto(i, input) {
+    if (!input.files.length) return;
+    const urls = await uploadFilesToImgbb(input.files);
+    if (!mandatData.entries[i].photos) mandatData.entries[i].photos = [];
+    mandatData.entries[i].photos.push(...urls);
+    mandatSaveData();
+    mandatRenderEntries();
+}
+
+async function mandatDropPhoto(i, e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    const urls = await uploadFilesToImgbb(e.dataTransfer.files);
+    if (!mandatData.entries[i].photos) mandatData.entries[i].photos = [];
+    mandatData.entries[i].photos.push(...urls);
+    mandatSaveData();
+    mandatRenderEntries();
+}
+
+function mandatDelPhoto(i, pi) {
+    mandatData.entries[i].photos.splice(pi, 1);
+    mandatSaveData();
+    mandatRenderEntries();
+}
+
+function mandatRenderDocuments() {
+    const container = document.getElementById('mandatDocumentsList');
+    if (!container) return;
+    if (!mandatData.documents) mandatData.documents = [];
+    container.innerHTML = mandatData.documents.map((doc, i) => `
+        <div class="m-doc-item">
+            <input type="text" class="m-doc-label" value="${rapEsc(doc.label)}" placeholder="Nom du document..." oninput="mandatDocField(${i},'label',this.value)">
+            <input type="text" class="m-doc-url" value="${rapEsc(doc.url)}" placeholder="🔗 Coller le lien du document..." oninput="mandatDocField(${i},'url',this.value)">
+            <a href="${rapEsc(doc.url)}" target="_blank" rel="noopener" class="m-doc-open" id="mandatDocOpen-${i}" style="${doc.url ? '' : 'display:none;'}">Ouvrir</a>
+            <button class="m-entry-del" onclick="mandatDelDocument(${i})" title="Supprimer">✕</button>
+        </div>
+    `).join('');
+}
+
+function mandatAddDocument() {
+    if (!mandatData.documents) mandatData.documents = [];
+    mandatData.documents.push({ label: '', url: '' });
+    mandatSaveData();
+    mandatRenderDocuments();
+}
+
+function mandatDocField(i, field, value) {
+    if (!mandatData.documents[i]) return;
+    mandatData.documents[i][field] = value;
+    mandatSaveData();
+    if (field === 'url') {
+        const link = document.getElementById('mandatDocOpen-' + i);
+        if (link) {
+            link.href = value;
+            link.style.display = value ? '' : 'none';
+        }
+    }
+}
+
+function mandatDelDocument(i) {
+    mandatData.documents.splice(i, 1);
+    mandatSaveData();
+    mandatRenderDocuments();
+}
+
+function mandatNoteField(value) {
+    mandatData.note = value;
+    mandatSaveData();
+}
+
+// ---- Officiers (checklist org + @ libre) ----
+function mandatOfficierGradeLabel(grade) {
+    const g = (typeof ORG_GRADES !== 'undefined' ? ORG_GRADES : []).find(x => x.key === grade);
+    return g ? g.emoji : '🔵';
+}
+
+function mandatRenderOfficiers() {
+    const chips = document.getElementById('mandatOfficiersChips');
+    if (!chips) return;
+    if (!mandatData.officiers) mandatData.officiers = [];
+    chips.innerHTML = mandatData.officiers.map((o, i) => `
+        <span class="m-officier-chip">${rapEsc(o.label)}<button type="button" onclick="mandatRemoveOfficier(${i})" title="Retirer">✕</button></span>
+    `).join('') || `<span style="font-size:13px;color:#888;font-style:italic;">Aucun officier sélectionné</span>`;
+    mandatRenderOfficiersChecklist();
+}
+
+function mandatRenderOfficiersChecklist() {
+    const list = document.getElementById('mandatOfficiersCheckList');
+    if (!list) return;
+    const members = (typeof orgMembers !== 'undefined' ? orgMembers : []);
+    if (!members.length) {
+        list.innerHTML = `<div class="m-og-empty">Aucun membre dans l'organigramme</div>`;
+        return;
+    }
+    list.innerHTML = members.map(m => {
+        const label = `${mandatOfficierGradeLabel(m.grade)} ${(m.first_name||'') + ' ' + (m.last_name||'')}`.trim() || m.username;
+        const checked = (mandatData.officiers||[]).some(o => o.type === 'member' && o.id === m.id);
+        return `<label>
+            <input type="checkbox" ${checked ? 'checked' : ''} onchange="mandatToggleOfficierMember('${m.id}', '${rapEsc(label).replace(/'/g,"\\'")}', this.checked)">
+            ${rapEsc(label)}
+        </label>`;
+    }).join('');
+}
+
+function mandatToggleOfficiersDropdown(e) {
+    e.stopPropagation();
+    const dd = document.getElementById('mandatOfficiersDropdown');
+    if (!dd) return;
+    dd.classList.toggle('open');
+    if (dd.classList.contains('open')) mandatRenderOfficiersChecklist();
+}
+document.addEventListener('click', function(e) {
+    const dd = document.getElementById('mandatOfficiersDropdown');
+    if (dd && dd.classList.contains('open') && !dd.contains(e.target) && !e.target.closest('.m-officiers-add-btn')) {
+        dd.classList.remove('open');
+    }
+});
+
+function mandatToggleOfficierMember(id, label, checked) {
+    if (!mandatData.officiers) mandatData.officiers = [];
+    if (checked) {
+        if (!mandatData.officiers.some(o => o.type === 'member' && o.id === id)) {
+            mandatData.officiers.push({ type: 'member', id, label });
+        }
+    } else {
+        mandatData.officiers = mandatData.officiers.filter(o => !(o.type === 'member' && o.id === id));
+    }
+    mandatSaveData();
+    mandatRenderOfficiers();
+}
+
+function mandatAddCustomOfficier() {
+    const input = document.getElementById('mandatOfficiersCustomInput');
+    if (!input) return;
+    let val = input.value.trim();
+    if (!val) return;
+    if (!val.startsWith('@')) val = '@' + val;
+    if (!mandatData.officiers) mandatData.officiers = [];
+    mandatData.officiers.push({ type: 'custom', id: 'custom_' + Date.now(), label: val });
+    input.value = '';
+    mandatSaveData();
+    mandatRenderOfficiers();
+}
+
+function mandatRemoveOfficier(i) {
+    mandatData.officiers.splice(i, 1);
+    mandatSaveData();
+    mandatRenderOfficiers();
 }
 
 // ---- Éditeur ----
