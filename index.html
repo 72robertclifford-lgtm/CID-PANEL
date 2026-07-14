@@ -7268,7 +7268,6 @@ function canViewMandat(id) {
 
 // ---- Permission d'écriture : réservée aux officiers assignés sur CE mandat (+ Master Investigator/Commanding toujours) ----
 function canEditMandat(id) {
-    if (getPermLevel() === 'supervisor') return true;
     const m = cidMandats.find(x => x.id === id);
     if (!m || !m.form || !m.form.officiers || !currentUser) return false;
     return m.form.officiers.some(o => o && o.username && o.username === currentUser.username);
@@ -7433,7 +7432,7 @@ function renderMandatEditor(container) {
         <button class="btn-toolbar" onclick="window.print()" style="background:linear-gradient(135deg,#C9A227,#e0b830);color:#0D2B5E;font-weight:700;">🖨️ Imprimer / PDF</button>
         ${canWrite ? `<button class="btn-toolbar" onclick="renameMandat('${id}')" style="background:rgba(201,162,39,0.15);color:#C9A227;border:1px solid rgba(201,162,39,0.3);">✏️ Renommer</button>` : ''}
     </div>
-    ${!canWrite ? `<div style="max-width:740px;margin:0 auto 16px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.35);color:#e0b830;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;">🔒 Lecture seule — seuls les officiers assignés à ce mandat (ou Master Investigator+) peuvent le modifier.</div>` : ''}
+    ${!canWrite ? `<div style="max-width:740px;margin:0 auto 16px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.35);color:#e0b830;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;">🔒 Lecture seule — seuls les officiers assignés à ce mandat peuvent le modifier.</div>` : ''}
 
     <div class="mandat-wrap" style="padding-top:0;">
         <div class="mandat-doc" contenteditable="false">
@@ -8706,20 +8705,6 @@ function _applyCarteTabVisibility() {
     const carteTabEl = document.getElementById('tabCarte');
     if (carteTabEl) carteTabEl.style.display = _carteTabAllowed() ? '' : 'none';
     _renderCarteAccessToggleButton();
-    _notifyCarteAccessStatusOnce();
-}
-
-// Affiche un toast (même style que "Accès Procureur accordé") une seule fois par session,
-// informant l'utilisateur de son accès actuel à la carte, uniquement si une restriction est active.
-let _carteAccessToastShown = false;
-function _notifyCarteAccessStatusOnce() {
-    if (_carteAccessToastShown || !currentUser || !_carteAccessRestricted) return;
-    _carteAccessToastShown = true;
-    if (_carteTabAllowed()) {
-        showSuccessDossiers('🟢 Accès Carte accordé', 6000);
-    } else {
-        showSuccessDossiers('🔴 Accès Carte restreint', 6000);
-    }
 }
 
 async function toggleCarteAccessRestriction() {
