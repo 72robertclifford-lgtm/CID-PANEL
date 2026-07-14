@@ -2742,6 +2742,7 @@ window.addEventListener('load', async () => {
                         setTimeout(async () => {
                             try {
                                 await loadOrgMembersFromSupabase();
+                                grantMandatLinkAccess(data.mandatId);
                                 await loadCidMandats();
                                 switchMainTab('mandat');
                                 setTimeout(() => openMandat(data.mandatId), 300);
@@ -3990,6 +3991,7 @@ async function checkPendingLink() {
         setTimeout(async () => {
             try {
                 await loadOrgMembersFromSupabase();
+                grantMandatLinkAccess(data.mandatId);
                 await loadCidMandats();
                 switchMainTab('mandat');
                 setTimeout(() => openMandat(data.mandatId), 300);
@@ -7262,8 +7264,23 @@ async function saveCidMandats() {
     } catch(e) {}
 }
 
+let _mandatAccess = {};
+function _loadMandatAccess() {
+    try { _mandatAccess = JSON.parse(localStorage.getItem('cid_mandat_access') || '{}'); } catch(e) { _mandatAccess = {}; }
+}
+function _saveMandatAccess() {
+    try { localStorage.setItem('cid_mandat_access', JSON.stringify(_mandatAccess)); } catch(e) {}
+}
+function grantMandatLinkAccess(id) {
+    _loadMandatAccess();
+    _mandatAccess[id] = ['_open_'];
+    _saveMandatAccess();
+}
 function canViewMandat(id) {
-    return true; // Lecture accessible à tous les membres connectés, y compris procureur
+    if (getPermLevel() !== 'procureur') return true;
+    // Procureur : accès uniquement si le lien lui a été donné explicitement
+    if (!Object.keys(_mandatAccess).length) _loadMandatAccess();
+    return (_mandatAccess[id] || []).length > 0;
 }
 
 // ---- Permission d'écriture : réservée aux officiers assignés sur CE mandat (+ Master Investigator/Commanding toujours) ----
@@ -7295,7 +7312,7 @@ function renderMandatsList(container) {
     let html = `
     <div style="margin-bottom:18px;">
         <h2 style="color:#C9A227;font-size:20px;font-weight:900;margin:0 0 4px;">📜 Mandats de perquisition</h2>
-        <p style="color:var(--text3);font-size:13px;margin:0;">Demandes officielles de la Criminal Investigation Division · Lecture pour tous, écriture réservée aux agents en charge</p>
+        <p style="color:var(--text3);font-size:13px;margin:0;">Demandes officielles de la Criminal Investigation Division · Écriture réservée aux agents en charge · Procureurs : accès uniquement via lien</p>
     </div>`;
 
     if (canCreate) html += `<button class="btn-new-dossier" onclick="createMandat()">+ Créer un nouveau mandat</button>`;
