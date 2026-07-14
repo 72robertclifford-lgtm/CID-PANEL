@@ -5159,6 +5159,9 @@ function openDocLink(type, id) {
     } else if (type === 'rapport') {
         if (id === 'internal') { switchMainTab('rapport'); return; }
         loadCidRapports().then(() => { switchMainTab('rapport'); setTimeout(() => openRapport(id), 300); });
+    } else if (type === 'mandat') {
+        if (id === 'internal') { switchMainTab('mandat'); return; }
+        loadCidMandats().then(() => { switchMainTab('mandat'); setTimeout(() => openMandat(id), 300); });
     }
 }
 
@@ -5233,13 +5236,17 @@ function renderDocumentsTab() {
                     _onclick = "openDocLink('interro','internal')";
                 } else if (doc.linkType === 'rapport') {
                     _onclick = "openDocLink('rapport','internal')";
+                } else if (doc.linkType === 'mandat') {
+                    _onclick = "openDocLink('mandat','internal')";
                 } else {
                     try {
                         const _u = new URL(doc.url, window.location.href);
                         const _iid = _u.searchParams.get('interrogatoire');
                         const _rid = _u.searchParams.get('rapport');
+                        const _mid = _u.searchParams.get('mandat');
                         if (_iid) _onclick = "openDocLink('interro','" + _iid + "')";
                         else if (_rid) _onclick = "openDocLink('rapport','" + _rid + "')";
+                        else if (_mid) _onclick = "openDocLink('mandat','" + _mid + "')";
                         else _onclick = "window.open('" + doc.url.replace(/'/g,"\'") + "','_blank')";
                     } catch(e) { _onclick = "window.open('" + doc.url + "','_blank')"; }
                 }
@@ -5307,7 +5314,7 @@ async function saveDocument() {
         icon: document.getElementById('docIcon').value.trim() || '🔗'
     };
     if (!doc.title || !doc.url) return alert('Titre et URL requis !');
-    if (!doc.url.startsWith('http')) doc.url = 'https://' + doc.url;
+    if (linkType === 'external' && !doc.url.startsWith('http')) doc.url = 'https://' + doc.url;
     if (idx !== '') { docs[parseInt(idx)] = doc; } else { docs.push(doc); }
     await saveDocuments(docs);
     document.getElementById('docModal').style.display = 'none';
