@@ -1258,6 +1258,43 @@
                 .mandat-toolbar button:hover { filter:brightness(1.06); transform:translateY(-1px); }
 
                 .mandat-doc { font-family: Georgia,'Times New Roman',serif; color:#2b2b2b; }
+                @import url('https://fonts.googleapis.com/css2?family=Alex+Brush&family=Meie+Script&display=swap');
+                .mandat-doc .m-signatures-wrap {
+                    display:flex; justify-content:flex-end; flex-wrap:wrap; gap:30px;
+                    margin:30px 4px 8px; padding-top:14px;
+                }
+                .mandat-doc .m-signature-card {
+                    display:flex; flex-direction:column; align-items:flex-end; min-width:190px;
+                }
+                .mandat-doc .m-signature-ink {
+                    position:relative; padding:4px 6px 0; display:flex; align-items:baseline; gap:2px;
+                }
+                .mandat-doc .m-signature-script {
+                    font-family:'Alex Brush', 'Meie Script', cursive; font-weight:400;
+                    font-size:46px; line-height:0.9; white-space:nowrap;
+                    color:#1c2b4a;
+                    text-shadow:
+                        0.4px 0.4px 0 rgba(20,30,60,0.55),
+                        0 0 1.5px rgba(20,30,60,0.35),
+                        0 0.5px 0.5px rgba(20,30,60,0.25);
+                    filter: contrast(1.15);
+                    transform-origin: center bottom;
+                }
+                .mandat-doc .m-signature-tagline {
+                    display:flex; flex-direction:column; align-items:flex-start;
+                    margin-left:6px; transform:translateY(-13px);
+                }
+                .mandat-doc .m-signature-flourish-line {
+                    width:64px; height:1px; background:#1c2b4a; margin-bottom:5px; position:relative;
+                }
+                .mandat-doc .m-signature-flourish-line::after {
+                    content:''; position:absolute; right:-4px; top:-1.5px;
+                    width:3px; height:3px; border-radius:50%; background:#1c2b4a;
+                }
+                .mandat-doc .m-signature-caps {
+                    font-family:Georgia,serif; font-size:9px; letter-spacing:2.5px; font-weight:700;
+                    text-transform:uppercase; color:#a67d0f; white-space:nowrap;
+                }
                 .mandat-doc .m-page {
                     background:#fffdf9; width:740px; max-width:100%; margin:0 auto 34px auto;
                     border-radius:18px; overflow:hidden; box-shadow:0 6px 20px rgba(5,12,30,0.25);
@@ -7622,6 +7659,7 @@ function renderMandatEditor(container) {
                             <div class="m-dossier-note" contenteditable="${canWrite}" oninput="mandatNoteField(this.textContent)" id="mandatDossierNote">${rapEsc(f.note)}</div>
                         </div>
                     </div>
+                    <div id="mandatSignaturesWrap" class="m-signatures-wrap"></div>
                     <div class="m-page-footer">Page 3 / 3 — CID Confidentiel</div>
                 </div>
             </div>
@@ -7884,6 +7922,37 @@ function mandatRenderOfficiers() {
     // Masquer les contrôles d'ajout si l'utilisateur n'a pas le droit d'écrire
     const addWrap = document.getElementById('mandatOfficiersAddWrap');
     if (addWrap) addWrap.style.display = mandatCanWrite() ? '' : 'none';
+    mandatRenderSignatures();
+}
+
+function mandatRenderSignatures() {
+    const wrap = document.getElementById('mandatSignaturesWrap');
+    const f = mandatForm();
+    if (!wrap || !f) return;
+    const officiers = f.officiers || [];
+    if (!officiers.length) { wrap.innerHTML = ''; return; }
+    wrap.innerHTML = officiers.map((o, i) => {
+        let grade = '', name = '';
+        if (o.username) {
+            const parts = (o.label || '').split('|');
+            grade = (parts[0] || '').trim();
+            name = parts.slice(1).join('|').trim();
+        } else {
+            name = (o.label || '').replace(/^@/, '');
+            grade = 'Agent';
+        }
+        // Légère rotation aléatoire (mais stable) pour un rendu "signé à la main"
+        const angle = (((name.length * 7 + i * 13) % 9) - 4) * 0.6;
+        return `<div class="m-signature-card">
+            <div class="m-signature-ink">
+                <span class="m-signature-script" style="transform:rotate(${angle}deg);">${rapEsc(name || '—')}</span>
+                <span class="m-signature-tagline">
+                    <span class="m-signature-flourish-line"></span>
+                    <span class="m-signature-caps">${rapEsc(grade)}</span>
+                </span>
+            </div>
+        </div>`;
+    }).join('');
 }
 
 function mandatOfficierItemHtml(a, currentUsernames) {
