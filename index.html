@@ -1575,6 +1575,7 @@
             <option value="external">🌐 Lien externe (GDoc, Drive...)</option>
             <option value="interrogatoire">📄 Page Interrogatoire</option>
             <option value="rapport">📋 Page Rapport</option>
+            <option value="mandat">📜 Page Mandat</option>
         </select></div>
         <div id="docUrlField" style="margin-bottom:12px;"><label style="font-size:12px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">URL *</label>
         <input type="text" id="docUrl" placeholder="https://..." style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--input-bg);color:var(--text);"></div>
@@ -1582,9 +1583,9 @@
         <input type="text" id="docDescription" placeholder="Courte description..." style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--input-bg);color:var(--text);"></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
             <div><label style="font-size:12px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">Catégorie</label>
-            <input type="text" id="docCategory" placeholder="Général" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--input-bg);color:var(--text);"></div>
+            <input type="text" id="docCategory" placeholder="Général" oninput="this.dataset.auto='0'" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--input-bg);color:var(--text);"></div>
             <div><label style="font-size:12px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">Icône (emoji)</label>
-            <input type="text" id="docIcon" placeholder="🔗" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--input-bg);color:var(--text);"></div>
+            <input type="text" id="docIcon" placeholder="🔗" oninput="this.dataset.auto='0'" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--input-bg);color:var(--text);"></div>
         </div>
         <div style="display:flex;gap:10px;">
             <button onclick="saveDocument()" style="flex:1;padding:12px;background:linear-gradient(135deg,#C9A227,#e0b830);color:#0D2B5E;border:none;border-radius:8px;font-weight:800;font-size:14px;cursor:pointer;">✅ Sauvegarder</button>
@@ -1601,6 +1602,17 @@ console.log('%cSi quelqu\'un vous a demandé de coller du code ici, c\'est une a
 
 const SUPABASE_URL = 'https://fgwkcpmwagxtgdqciuqe.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZnd2tjcG13YWd4dGdkcWNpdXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MDExODYsImV4cCI6MjA5NzM3NzE4Nn0.sDmslM6rDJVdntx8wTJxA5qlQp9Bwx5kJjdSapiBxVM';
+
+// URL utilisée pour générer les liens copiés (dossiers, rapports, interrogatoires, mandats).
+// Par défaut = l'adresse actuelle du site (github.io).
+// Une fois le Worker Cloudflare créé (voir cid-panel-worker.js), remplace cette valeur
+// par ex: 'https://cid-panel.TON-PSEUDO.workers.dev' pour que les aperçus Discord
+// affichent le bon nom. Laisse vide ('') pour utiliser l'adresse actuelle automatiquement.
+const SHARE_BASE_URL = '';
+function getShareBaseUrl() {
+    if (SHARE_BASE_URL) return SHARE_BASE_URL.replace(/\/$/, '');
+    return window.location.origin + window.location.pathname.replace(/\/$/, '');
+}
 
 
 // ===== SECURITY LAYER =====
@@ -3926,7 +3938,7 @@ function exportGoogleDoc() {
 // ===== COPY DOSSIER LINK =====
 function copyDossierLink() {
     if (!currentDossierId) return;
-    const baseUrl = window.location.origin + window.location.pathname.replace(/\/$/, '');
+    const baseUrl = getShareBaseUrl();
     const doss = currentDossierCache.find(d => d.id === currentDossierId);
     // Nom du gang depuis les données du dossier
     const gangName = (doss && doss.data && doss.data.organization && doss.data.organization.name)
@@ -5150,11 +5162,32 @@ function openDocLink(type, id) {
     }
 }
 
+const DOC_TYPE_DEFAULTS = {
+    external:      { category: 'Général',        icon: '🔗' },
+    interrogatoire:{ category: 'Interrogatoires', icon: '📄' },
+    rapport:       { category: 'Rapports',        icon: '📋' },
+    mandat:        { category: 'Mandats',         icon: '📜' }
+};
+
 function toggleDocLinkType() {
     const lt = document.getElementById('docLinkType');
     const urlField = document.getElementById('docUrlField');
     if (!lt || !urlField) return;
     urlField.style.display = (lt.value === 'external') ? 'block' : 'none';
+
+    const defaults = DOC_TYPE_DEFAULTS[lt.value] || DOC_TYPE_DEFAULTS.external;
+    const catEl = document.getElementById('docCategory');
+    const iconEl = document.getElementById('docIcon');
+    // Ne remplace la catégorie/icône que si le champ est vide ou correspond encore
+    // à une valeur auto-remplie précédente (pour ne pas écraser une saisie manuelle).
+    if (catEl && (!catEl.value.trim() || catEl.dataset.auto === '1')) {
+        catEl.value = defaults.category;
+        catEl.dataset.auto = '1';
+    }
+    if (iconEl && (!iconEl.value.trim() || iconEl.dataset.auto === '1')) {
+        iconEl.value = defaults.icon;
+        iconEl.dataset.auto = '1';
+    }
 }
 
 function renderDocumentsTab() {
@@ -5244,6 +5277,8 @@ function openAddDocument(existingIdx) {
     document.getElementById('docDescription').value = doc ? (doc.description||'') : '';
     document.getElementById('docCategory').value = doc ? (doc.category||'Général') : 'Général';
     document.getElementById('docIcon').value = doc ? (doc.icon||'🔗') : '🔗';
+    document.getElementById('docCategory').dataset.auto = doc ? '0' : '1';
+    document.getElementById('docIcon').dataset.auto = doc ? '0' : '1';
     const lt = document.getElementById('docLinkType');
     if (lt) { lt.value = doc ? (doc.linkType||'external') : 'external'; toggleDocLinkType(); }
     document.getElementById('docModal').style.display = 'flex';
@@ -6701,7 +6736,7 @@ function printCidDeposition(id) {
     setTimeout(() => w.print(), 500);
 }
 function copyInterroLink(id) {
-    const baseUrl = window.location.origin + window.location.pathname.replace(/\/$/, '');
+    const baseUrl = getShareBaseUrl();
     const dep = cidDepositions.find(d => d.id === id);
     const nomSlug = dep ? dep.name.replace(/[^a-zA-Z0-9À-ÿ\s-]/g,'').trim().replace(/\s+/g,'-').substring(0,40) : '';
     const link = `${baseUrl}?interrogatoire=${id}${nomSlug ? '&nom='+encodeURIComponent(nomSlug) : ''}`;
@@ -7402,9 +7437,10 @@ async function deleteMandat(id) {
 }
 
 function copyMandatLink(id) {
-    const base = window.location.origin + window.location.pathname.replace(/\/$/, '');
-    const link = `${base}?mandat=${id}`;
+    const base = getShareBaseUrl();
     const m = cidMandats.find(x => x.id === id);
+    const nomSlug = m ? m.name.replace(/[^a-zA-Z0-9À-ÿ\s-]/g,'').trim().replace(/\s+/g,'-').substring(0,50) : '';
+    const link = `${base}?mandat=${id}${nomSlug ? '&nom='+encodeURIComponent(nomSlug) : ''}`;
     navigator.clipboard.writeText(link).then(() => {
         showSuccessDossiers('🔗 Lien du mandat copié ! Toute personne connectée pourra le consulter (lecture seule sauf agents assignés).');
     }).catch(() => prompt('Copie ce lien :', link));
@@ -8139,7 +8175,7 @@ function printRapport(id) {
 }
 
 function copyRapportLink(id) {
-    const base = window.location.origin + window.location.pathname.replace(/\/$/, '');
+    const base = getShareBaseUrl();
     const rap = cidRapports.find(r => r.id === id);
     const nomSlugR = rap ? (rap.form && rap.form.objet ? rap.form.objet : rap.name).replace(/[^a-zA-Z0-9À-ÿ\s-]/g,'').trim().replace(/\s+/g,'-').substring(0,40) : '';
     const link = `${base}?rapport=${id}${nomSlugR ? '&nom='+encodeURIComponent(nomSlugR) : ''}`;
