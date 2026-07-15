@@ -20,6 +20,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
 
         /* ===== DESIGN SYSTEM ===== */
@@ -1719,6 +1720,16 @@ function sanitize(str) {
 // ===== END SECURITY =====
 
 // ===== SUPABASE HELPERS =====
+// Verrou par clé : sérialise les sauvegardes (DELETE + POST) sur une même clé org_settings
+// pour éviter les erreurs 409 (conflit) quand plusieurs sauvegardes partent en même temps.
+const _orgSaveQueues = {};
+function withOrgSaveLock(key, fn) {
+    const prev = _orgSaveQueues[key] || Promise.resolve();
+    const next = prev.catch(() => {}).then(fn);
+    _orgSaveQueues[key] = next;
+    return next;
+}
+
 async function sbFetch(path, options = {}) {
     const { headers: extraHeaders, prefer, ...restOptions } = options;
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -7389,6 +7400,163 @@ function rapDelPhoto(id, bi, pi) {
     renderMainRapportTab();
 }
 
+// ==================== EXPORT GOOGLE DOCS (connexion individuelle rapide) ====================
+const GOOGLE_CLIENT_ID = '877551489878-4ekfaibv723cv19mbf0tqbnmiip2rtu6.apps.googleusercontent.com';
+const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive.file';
+let _googleAccessToken = null;
+let _googleTokenClient = null;
+
+function _ensureGoogleTokenClient() {
+    if (_googleTokenClient) return true;
+    if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) return false;
+    _googleTokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: GOOGLE_SCOPES,
+        callback: () => {}
+    });
+    return true;
+}
+
+function _googleRequestAccessToken(forceConsent) {
+    return new Promise((resolve, reject) => {
+        if (!_ensureGoogleTokenClient()) { reject(new Error("Google Identity Services n'a pas pu se charger. Vérifie ta connexion internet.")); return; }
+        _googleTokenClient.callback = (resp) => {
+            if (resp.error) { reject(new Error(resp.error)); return; }
+            _googleAccessToken = resp.access_token;
+            resolve(resp.access_token);
+        };
+        _googleTokenClient.requestAccessToken({ prompt: forceConsent ? 'consent' : '' });
+    });
+}
+
+async function _googleGetToken() {
+    if (_googleAccessToken) return _googleAccessToken;
+    return await _googleRequestAccessToken(true);
+}
+
+async function _googleApiFetch(url, options, retry) {
+    if (retry === undefined) retry = true;
+    const token = await _googleGetToken();
+    const resp = await fetch(url, Object.assign({}, options, {
+        headers: Object.assign({}, (options && options.headers) || {}, { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' })
+    }));
+    if (resp.status === 401 && retry) {
+        _googleAccessToken = null;
+        return _googleApiFetch(url, options, false);
+    }
+    return resp;
+}
+
+async function _createGoogleDoc(title) {
+    const resp = await _googleApiFetch('https://docs.googleapis.com/v1/documents', {
+        method: 'POST',
+        body: JSON.stringify({ title })
+    });
+    if (!resp.ok) throw new Error('Erreur de création du document Google Docs (' + resp.status + ').');
+    return await resp.json();
+}
+
+async function _googleDocsBatchUpdate(documentId, requests) {
+    if (!requests.length) return;
+    const resp = await _googleApiFetch(`https://docs.googleapis.com/v1/documents/${documentId}:batchUpdate`, {
+        method: 'POST',
+        body: JSON.stringify({ requests })
+    });
+    if (!resp.ok) {
+        const errTxt = await resp.text();
+        console.error('Docs batchUpdate error:', errTxt);
+        throw new Error("Erreur lors de l'écriture du contenu dans le document.");
+    }
+    return await resp.json();
+}
+
+// ---- Constructeur séquentiel de contenu (texte stylé + images) ----
+function _gNewState() { return { pos: 1, requests: [] }; }
+
+function _gAddText(state, text, opts) {
+    opts = opts || {};
+    if (!text) return;
+    const start = state.pos;
+    state.requests.push({ insertText: { location: { index: start }, text } });
+    state.pos += text.length;
+    const textStyle = {}; const fields = [];
+    if (opts.bold) { textStyle.bold = true; fields.push('bold'); }
+    if (opts.italic) { textStyle.italic = true; fields.push('italic'); }
+    if (opts.underline) { textStyle.underline = true; fields.push('underline'); }
+    if (opts.fontSize) { textStyle.fontSize = { magnitude: opts.fontSize, unit: 'PT' }; fields.push('fontSize'); }
+    if (opts.color) { textStyle.foregroundColor = { color: { rgbColor: opts.color } }; fields.push('foregroundColor'); }
+    if (fields.length) {
+        state.requests.push({ updateTextStyle: { range: { startIndex: start, endIndex: state.pos }, textStyle, fields: fields.join(',') } });
+    }
+    if (opts.align) {
+        state.requests.push({ updateParagraphStyle: { range: { startIndex: start, endIndex: state.pos }, paragraphStyle: { alignment: opts.align }, fields: 'alignment' } });
+    }
+}
+function _gAddLine(state, text, opts) { _gAddText(state, (text || '') + '\n', opts); }
+function _gAddSpacer(state) { _gAddText(state, '\n'); }
+
+function _gAddImage(state, uri, widthPt, heightPt) {
+    if (!uri) return;
+    state.requests.push({
+        insertInlineImage: {
+            location: { index: state.pos },
+            uri,
+            objectSize: { height: { magnitude: heightPt || 170, unit: 'PT' }, width: { magnitude: widthPt || 250, unit: 'PT' } }
+        }
+    });
+    state.pos += 1;
+    _gAddText(state, '\n');
+}
+
+function _gAddSectionTitle(state, text) {
+    _gAddSpacer(state);
+    _gAddLine(state, text.toUpperCase(), { bold: true, color: { red: 0.05, green: 0.17, blue: 0.37 }, fontSize: 12 });
+}
+
+function _gAddEntries(state, entries, emptyLabel) {
+    if (!entries || !entries.length) {
+        _gAddLine(state, emptyLabel || 'Aucun élément renseigné.', { italic: true, color: { red: 0.53, green: 0.53, blue: 0.53 } });
+        return;
+    }
+    entries.forEach(entry => {
+        _gAddLine(state, '📌 ' + (entry.date || '') + '   ' + (entry.text || ''));
+        (entry.photos || []).forEach(url => _gAddImage(state, url));
+    });
+}
+
+function _gOfficierLabel(o) {
+    if (!o) return '';
+    if (!o.username) return (o.label || '').replace(/^@/, '');
+    const parts = (o.label || '').split('|');
+    return parts.slice(1).join('|').trim() || parts[0] || o.username;
+}
+
+function _gAddSignatures(state, officiers) {
+    _gAddSpacer(state);
+    _gAddLine(state, "Nous vous prions d'agréer, monsieur le procureur, l'expression de nos respectueuses et sincères salutations,");
+    _gAddSpacer(state);
+    (officiers || []).forEach(o => {
+        _gAddLine(state, _gOfficierLabel(o), { italic: true, align: 'END' });
+    });
+}
+
+// Un seul clic : popup Google (choix du compte) → le document se crée directement.
+async function exportToGoogleDocs(title, buildFn) {
+    try {
+        showSuccessDossiers('🔐 Connexion à Google...');
+        const state = _gNewState();
+        buildFn(state);
+        const created = await _createGoogleDoc(title);
+        showSuccessDossiers('📤 Écriture du contenu dans Google Docs...');
+        await _googleDocsBatchUpdate(created.documentId, state.requests);
+        showSuccessDossiers('✅ Document créé sur Google Docs !');
+        window.open(`https://docs.google.com/document/d/${created.documentId}/edit`, '_blank');
+    } catch(e) {
+        console.error(e);
+        alert("Erreur lors de l'export vers Google Docs : " + e.message);
+    }
+}
+
 // ==================== MANDATS DE PERQUISITION (liste + éditeur) ====================
 let cidMandats = [];
 let currentMandatId = null;
@@ -7590,6 +7758,38 @@ function copyMandatLink(id) {
     }
 }
 
+async function exportMandatToGoogleDocs(id) {
+    const m = cidMandats.find(x => x.id === id);
+    if (!m || !m.form) return;
+    const f = m.form;
+    await exportToGoogleDocs(m.name, (state) => {
+        _gAddLine(state, 'CRIME INVESTIGATION DIVISION', { bold: true, color: { red: 0.79, green: 0.64, blue: 0.15 }, fontSize: 10 });
+        _gAddLine(state, 'MANDAT DE PERQUISITION', { bold: true, fontSize: 18, align: 'CENTER' });
+        _gAddSpacer(state);
+        _gAddLine(state, `Date : ${f.date || ''}`);
+        _gAddLine(state, `Localisation : ${f.localisation || ''}`);
+        _gAddLine(state, `Enquête : ${f.enquete || ''}`);
+        _gAddLine(state, `Agents impliqués : ${f.agentsImpliques || ''}`);
+        _gAddSectionTitle(state, 'Description de la demande');
+        _gAddLine(state, f.description || '—');
+        _gAddSectionTitle(state, 'N° de la propriété visée');
+        _gAddLine(state, f.numero || '—', { bold: true, color: { red: 0.75, green: 0.22, blue: 0.17 } });
+        _gAddSectionTitle(state, 'Informations du propriétaire');
+        _gAddLine(state, `Nom prénom : ${f.nomPrenom || 'Inconnu'}`);
+        _gAddLine(state, `Date de naissance : ${f.dob || 'Inconnu'}   —   Âge : ${f.age || 'Inconnu'}`);
+        _gAddLine(state, `Téléphone : ${f.tel || 'Inconnu'}`);
+        _gAddLine(state, `Adresse : ${f.adresse || 'Inconnu'}`);
+        _gAddSectionTitle(state, 'Faits');
+        (f.faits || []).filter(x => x && x.trim()).forEach(txt => _gAddLine(state, '▸ ' + txt));
+        _gAddSectionTitle(state, 'Informations');
+        _gAddLine(state, f.infoText || '—');
+        _gAddEntries(state, f.entries, 'Aucune information complémentaire.');
+        _gAddSectionTitle(state, 'Note');
+        _gAddLine(state, f.note || '—', { italic: true, color: { red: 0.75, green: 0.22, blue: 0.17 } });
+        _gAddSignatures(state, f.officiers);
+    });
+}
+
 // ---- Helpers données du mandat actuellement ouvert ----
 function mandatForm() {
     const m = cidMandats.find(x => x.id === currentMandatId);
@@ -7622,6 +7822,7 @@ function renderMandatEditor(container) {
         <button class="btn-toolbar btn-back" onclick="closeMandat()">← Retour</button>
         <span style="font-size:15px;font-weight:700;color:#C9A227;flex:1;">${rapEsc(m.name)}</span>
         <button class="btn-toolbar" onclick="copyMandatLink('${id}')" style="background:rgba(123,45,139,0.15);color:#d9a8f0;border:1px solid rgba(123,45,139,0.4);">🔗 Copier le lien</button>
+        <button class="btn-toolbar" onclick="exportMandatToGoogleDocs('${id}')" style="background:rgba(15,157,88,0.15);color:#5fd68f;border:1px solid rgba(15,157,88,0.4);">📤 Exporter vers Google Docs</button>
         ${canWrite ? `<button class="btn-toolbar" onclick="renameMandat('${id}')" style="background:rgba(201,162,39,0.15);color:#C9A227;border:1px solid rgba(201,162,39,0.3);">✏️ Renommer</button>` : ''}
     </div>
     ${!canWrite ? `<div style="max-width:740px;margin:0 auto 16px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.35);color:#e0b830;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;">🔒 Lecture seule — seuls les officiers assignés à ce mandat peuvent le modifier.</div>` : ''}
@@ -8385,6 +8586,32 @@ function copyInjonctionLink(id) {
     }
 }
 
+async function exportInjonctionToGoogleDocs(id) {
+    const m = cidInjonctions.find(x => x.id === id);
+    if (!m || !m.form) return;
+    const f = m.form;
+    const critereLabel = (INJONCTION_CRITERE_LABELS && INJONCTION_CRITERE_LABELS[f.critere]) || 'numéro de propriété';
+    await exportToGoogleDocs(m.name, (state) => {
+        _gAddLine(state, 'CRIME INVESTIGATION DIVISION', { bold: true, color: { red: 0.79, green: 0.64, blue: 0.15 }, fontSize: 10 });
+        _gAddLine(state, "DEMANDE D'INJONCTION IMMOBILIÈRE", { bold: true, fontSize: 18, align: 'CENTER' });
+        _gAddSpacer(state);
+        _gAddLine(state, `Fait à ${f.lieu || ''}, le ${f.date || ''}.`, { italic: true });
+        _gAddSpacer(state);
+        _gAddLine(state, 'Monsieur le Procureur,');
+        _gAddSpacer(state);
+        _gAddLine(state, "Dans le cadre d'une enquête de la Crime Investigation Division, nous avons l'honneur de vous adresser une demande d'injonction immobilière afin de mener à bien la suite de nos investigations.");
+        _gAddSpacer(state);
+        _gAddLine(state, `Ainsi nous avons besoin de questionner les agents immobiliers en fonction du ${critereLabel}.`);
+        _gAddSectionTitle(state, 'Propriétés visées');
+        (f.rows || []).forEach((r, i) => {
+            _gAddLine(state, `${i + 1}. Propriétaire : ${r.proprietaire || '—'}   |   N° : ${r.numero || '—'}   |   Adresse : ${r.adresse || '—'}`);
+        });
+        _gAddSectionTitle(state, 'Preuves (liens, photos, dépositions)');
+        _gAddEntries(state, f.entries, 'Aucune preuve renseignée.');
+        _gAddSignatures(state, f.officiers);
+    });
+}
+
 // ---- Helpers données du injonction actuellement ouvert ----
 function injonctionForm() {
     const m = cidInjonctions.find(x => x.id === currentInjonctionId);
@@ -8416,6 +8643,7 @@ function renderInjonctionEditor(container) {
         <button class="btn-toolbar btn-back" onclick="closeInjonction()">← Retour</button>
         <span style="font-size:15px;font-weight:700;color:#C9A227;flex:1;">${rapEsc(m.name)}</span>
         <button class="btn-toolbar" onclick="copyInjonctionLink('${id}')" style="background:rgba(123,45,139,0.15);color:#d9a8f0;border:1px solid rgba(123,45,139,0.4);">🔗 Copier le lien</button>
+        <button class="btn-toolbar" onclick="exportInjonctionToGoogleDocs('${id}')" style="background:rgba(15,157,88,0.15);color:#5fd68f;border:1px solid rgba(15,157,88,0.4);">📤 Exporter vers Google Docs</button>
         ${canWrite ? `<button class="btn-toolbar" onclick="renameInjonction('${id}')" style="background:rgba(201,162,39,0.15);color:#C9A227;border:1px solid rgba(201,162,39,0.3);">✏️ Renommer</button>` : ''}
     </div>
     ${!canWrite ? `<div style="max-width:740px;margin:0 auto 16px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.35);color:#e0b830;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;">🔒 Lecture seule — seuls les officiers assignés à cette injonction peuvent la modifier.</div>` : ''}
@@ -9126,6 +9354,28 @@ function copyBilanLink(id) {
     }
 }
 
+async function exportBilanToGoogleDocs(id) {
+    const m = cidBilans.find(x => x.id === id);
+    if (!m || !m.form) return;
+    const f = m.form;
+    await exportToGoogleDocs(m.name, (state) => {
+        _gAddLine(state, 'CRIME INVESTIGATION DIVISION', { bold: true, color: { red: 0.79, green: 0.64, blue: 0.15 }, fontSize: 10 });
+        _gAddLine(state, 'BILAN DE PERQUISITION DE PROPRIÉTÉ', { bold: true, fontSize: 18, align: 'CENTER' });
+        _gAddSpacer(state);
+        _gAddLine(state, `Fait à ${f.lieu || ''}, le ${f.date || ''}.`, { italic: true });
+
+        const sections = f.sections && f.sections.length ? f.sections : [{}];
+        sections.forEach((sec, si) => {
+            _gAddSectionTitle(state, `Partie ${si + 1}`);
+            _gAddLine(state, `Adresse : ${sec.adresse || '—'}   |   N° de propriété : ${sec.numero || '—'}   |   Propriétaire : ${sec.proprietaire || '—'}`);
+            _gAddLine(state, 'Bilan (décompte des saisies)', { bold: true });
+            _gAddEntries(state, sec.entries, 'Aucun élément de bilan renseigné.');
+        });
+
+        _gAddSignatures(state, f.officiers);
+    });
+}
+
 // ---- Helpers données du bilan actuellement ouvert ----
 function bilanForm() {
     const m = cidBilans.find(x => x.id === currentBilanId);
@@ -9155,6 +9405,7 @@ function renderBilanEditor(container) {
         <button class="btn-toolbar btn-back" onclick="closeBilan()">← Retour</button>
         <span style="font-size:15px;font-weight:700;color:#C9A227;flex:1;">${rapEsc(m.name)}</span>
         <button class="btn-toolbar" onclick="copyBilanLink('${id}')" style="background:rgba(123,45,139,0.15);color:#d9a8f0;border:1px solid rgba(123,45,139,0.4);">🔗 Copier le lien</button>
+        <button class="btn-toolbar" onclick="exportBilanToGoogleDocs('${id}')" style="background:rgba(15,157,88,0.15);color:#5fd68f;border:1px solid rgba(15,157,88,0.4);">📤 Exporter vers Google Docs</button>
         ${canWrite ? `<button class="btn-toolbar" onclick="renameBilan('${id}')" style="background:rgba(201,162,39,0.15);color:#C9A227;border:1px solid rgba(201,162,39,0.3);">✏️ Renommer</button>` : ''}
     </div>
     ${!canWrite ? `<div style="max-width:740px;margin:0 auto 16px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.35);color:#e0b830;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;">🔒 Lecture seule — seuls les officiers assignés à ce bilan peuvent le modifier.</div>` : ''}
