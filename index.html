@@ -2276,13 +2276,26 @@ function metaLabel(key) {
 const IMGBB_KEY = 'dd7e23b5f4f91dfbf1fb3123847ddc08';
 
 async function uploadToImgbb(file) {
-    const form = new FormData();
-    // Convert file to base64
-    const base64 = await new Promise((resolve) => {
+    if (!file || !file.size) {
+        throw new Error("Fichier vide ou illisible (souvent le cas quand une image est glissée depuis une page web au lieu de l'explorateur de fichiers).");
+    }
+    const MAX_SIZE = 32 * 1024 * 1024; // limite ImgBB
+    if (file.size > MAX_SIZE) {
+        throw new Error('Image trop lourde (max 32 Mo).');
+    }
+    const base64 = await new Promise((resolve, reject) => {
         const r = new FileReader();
-        r.onload = e => resolve(e.target.result.split(',')[1]);
+        r.onload = e => {
+            const result = e.target.result || '';
+            const parts = result.split(',');
+            const data = (parts[1] || '').replace(/\s/g, '');
+            if (!data) { reject(new Error("Échec de lecture de l'image (fichier corrompu ou vide).")); return; }
+            resolve(data);
+        };
+        r.onerror = () => reject(new Error("Erreur lors de la lecture du fichier."));
         r.readAsDataURL(file);
     });
+    const form = new FormData();
     form.append('key', IMGBB_KEY);
     form.append('image', base64);
     form.append('name', file.name || 'cid_photo');
@@ -2294,9 +2307,22 @@ async function uploadToImgbb(file) {
 
 async function uploadFilesToImgbb(files) {
     const urls = [];
+    const errors = [];
     for (const file of Array.from(files).filter(f=>f.type.startsWith('image/'))) {
-        try { urls.push(await uploadToImgbb(file)); } 
-        catch(e) { console.error('Upload failed:', e); }
+        try { urls.push(await uploadToImgbb(file)); }
+        catch(e) {
+            console.error('Upload failed:', e);
+            errors.push(`${file.name || 'image'} : ${e.message}`);
+        }
+    }
+    if (errors.length && typeof showSuccessDossiers === 'function') {
+        const el = document.getElementById('successMsgDossiers');
+        if (el) {
+            el.textContent = '⚠️ ' + (errors.length === 1 ? errors[0] : errors.length + " photos n'ont pas pu être envoyées.");
+            el.style.display = 'block';
+            el.style.background = '#c0392b';
+            setTimeout(() => { el.style.display = 'none'; el.style.background = ''; }, 5000);
+        }
     }
     return urls;
 }
