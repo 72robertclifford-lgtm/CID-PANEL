@@ -680,18 +680,32 @@
             border-radius: 20px; letter-spacing: 0.3px;
         }
         .dossiers-grid-compact {
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 12px;
+            grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+            gap: 10px;
         }
-        .dossiers-grid-compact .dossier-card-top { padding: 11px 12px 9px; gap: 9px; }
-        .dossiers-grid-compact .dossier-card-icon { width: 32px; height: 32px; font-size: 16px; border-radius: 9px; }
-        .dossiers-grid-compact .dossier-card h3 { font-size: 12.5px; margin-bottom: 4px; }
-        .dossiers-grid-compact .dossier-card-meta span { font-size: 9.5px; }
-        .dossiers-grid-compact .dossier-card-actions { padding: 8px 10px 10px; gap: 5px; }
-        .dossiers-grid-compact .dossier-card-actions-row { gap: 4px; }
-        .dossiers-grid-compact .dcard-btn { padding: 6px 4px; font-size: 9.5px; }
-        .dossiers-grid-compact .dcard-btn-open { padding: 8px; font-size: 11px; }
-        .dossiers-grid-compact .dossier-card::before { height: 3px; }
+        .dossiers-grid-compact .dossier-card-top { padding: 9px 10px 7px; gap: 7px; }
+        .dossiers-grid-compact .dossier-card-icon { width: 26px; height: 26px; font-size: 13px; border-radius: 8px; }
+        .dossiers-grid-compact .dossier-card h3 {
+            font-size: 11.5px; margin-bottom: 3px; line-height: 1.25;
+            white-space: normal; overflow: visible; text-overflow: unset;
+            word-break: break-word; display: block;
+        }
+        .dossiers-grid-compact .dossier-card-meta span { font-size: 9px; }
+        .dossiers-grid-compact .dossier-card-actions { padding: 7px 8px 8px; gap: 4px; }
+        .dossiers-grid-compact .dossier-card-actions-row { gap: 3px; }
+        .dossiers-grid-compact .dcard-btn { padding: 5px 3px; font-size: 9px; }
+        .dossiers-grid-compact .dcard-btn-open { padding: 7px; font-size: 10px; }
+        .dossiers-grid-compact .dossier-card::before { height: 2px; }
+        /* La carte survolée/cliquée grossit et passe au-dessus des autres */
+        .dossiers-grid-compact .dossier-card {
+            transition: transform 0.18s cubic-bezier(.34,1.56,.64,1), box-shadow 0.18s ease, z-index 0s;
+        }
+        .dossiers-grid-compact .dossier-card:hover {
+            transform: scale(1.12);
+            z-index: 5;
+            box-shadow: 0 18px 36px rgba(201,162,39,0.32), 0 6px 16px rgba(0,0,0,0.22);
+        }
+        .dossiers-grid-compact .dossier-card:active { transform: scale(1.16); }
         /* ===== FIN GROUPEMENT PAR MOIS ===== */
 
         /* ===== SIDEBAR ORGCHART ===== */
@@ -1824,6 +1838,39 @@ function renderGroupedByMonth(items, getDateFn, getCardHtmlFn) {
     `).join('');
 }
 
+// ---- Recherche (nom, mois, agents) sur les listes de documents ----
+const _listSearchQueries = {};
+const _listSearchRerender = {};
+
+function _searchBarHtml(moduleKey, placeholder) {
+    const val = _listSearchQueries[moduleKey] || '';
+    return `<div style="margin-bottom:16px;position:relative;">
+        <input type="text" id="search-${moduleKey}" value="${rapEsc(val)}" oninput="_onListSearchInput('${moduleKey}', this.value)" placeholder="${placeholder}" style="width:100%;padding:10px 14px 10px 36px;border:1px solid rgba(201,162,39,0.3);border-radius:10px;font-size:13px;background:var(--input-bg);color:var(--text);box-sizing:border-box;">
+        <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;pointer-events:none;opacity:0.7;">🔍</span>
+        ${val ? `<button type="button" onclick="_onListSearchInput('${moduleKey}','');document.getElementById('search-${moduleKey}').value='';" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:rgba(211,47,47,0.12);color:#d32f2f;border:none;border-radius:6px;width:22px;height:22px;cursor:pointer;font-size:11px;">✕</button>` : ''}
+    </div>`;
+}
+
+function _onListSearchInput(moduleKey, value) {
+    _listSearchQueries[moduleKey] = value;
+    const fn = _listSearchRerender[moduleKey];
+    if (fn) fn();
+    const el = document.getElementById('search-' + moduleKey);
+    if (el) { el.focus(); const len = el.value.length; try { el.setSelectionRange(len, len); } catch(e) {} }
+}
+
+function _matchesSearch(moduleKey, name, dateStr, agentTexts) {
+    const q = (_listSearchQueries[moduleKey] || '').toLowerCase().trim();
+    if (!q) return true;
+    if ((name || '').toLowerCase().includes(q)) return true;
+    if (_monthGroupLabel(dateStr).toLowerCase().includes(q)) return true;
+    return (agentTexts || []).some(a => (a || '').toLowerCase().includes(q));
+}
+
+function _officiersToTexts(officiers) {
+    return (officiers || []).map(o => (o && o.label) ? o.label.replace('|', ' ') : '').filter(Boolean);
+}
+
 
 // Système générique : vérifie périodiquement Supabase et rafraîchit l'affichage
 // dès qu'un autre membre ajoute/modifie/supprime quelque chose, sans jamais
@@ -2349,12 +2396,20 @@ async function renderDossiersList() {
     const carteTab = document.getElementById('tabCarte');
     if (carteTab) carteTab.style.display = _carteTabAllowed() ? '' : 'none';
 
+    _listSearchRerender.dossiers = () => renderDossiersList();
+    const searchBarHtml = _searchBarHtml('dossiers', '🔍 Rechercher par nom ou mois (ex: Juillet 2026)...');
+    const searchedList = filteredList.filter(d => _matchesSearch('dossiers', d.name, d.modified_at, []));
+
     if (filteredList.length === 0) {
         container.innerHTML = `<div class="empty-state"><h2>Aucun dossier</h2><p>${canCreate?'Créez un nouveau dossier pour commencer':'Aucun dossier disponible'}</p></div>`;
         return;
     }
+    if (searchedList.length === 0) {
+        container.innerHTML = searchBarHtml + `<div class="empty-state"><h2>Aucun résultat</h2><p>Essayez une autre recherche</p></div>`;
+        return;
+    }
 
-    container.innerHTML = renderGroupedByMonth(filteredList, d => d.modified_at, d => `
+    container.innerHTML = searchBarHtml + renderGroupedByMonth(searchedList, d => d.modified_at, d => `
         <div class="dossier-card">
             <div class="dossier-card-top">
                 <div class="dossier-card-icon">📁</div>
@@ -6755,9 +6810,14 @@ async function renderDepositionsList(container) {
     if (canCreate) {
         html += `<button class="btn-new-dossier" onclick="createDeposition()">+ Créer un nouvel interrogatoire</button>`;
     }
+    html += _searchBarHtml('deposition', '🔍 Rechercher par nom, mois (ex: Juillet 2026), agent...');
+    _listSearchRerender.deposition = () => renderDepositionsList(container);
+
+    const allList = list;
+    list = list.filter(dep => _matchesSearch('deposition', dep.name, dep.modified_at, [dep.form && dep.form.detective]));
 
     if (list.length === 0) {
-        html += `<div class="empty-state"><h2>Aucun interrogatoire</h2><p>${canCreate?'Créez un nouvel interrogatoire pour commencer':'Aucun interrogatoire disponible'}</p></div>`;
+        html += `<div class="empty-state"><h2>${allList.length ? 'Aucun résultat' : 'Aucun interrogatoire'}</h2><p>${allList.length ? 'Essayez une autre recherche' : (canCreate?'Créez un nouvel interrogatoire pour commencer':'Aucun interrogatoire disponible')}</p></div>`;
         container.innerHTML = html;
         return;
     }
@@ -7450,6 +7510,7 @@ async function renderMainRapportTab() {
 function renderRapportsList(container) {
     const canWrite = canEdit();
     const canCreate = getPermLevel() !== 'procureur';
+    _listSearchRerender.rapport = () => renderRapportsList(container);
 
     let html = `
     <div style="margin-bottom:18px;">
@@ -7458,12 +7519,17 @@ function renderRapportsList(container) {
     </div>`;
 
     if (canCreate) html += `<button class="btn-new-dossier" onclick="createRapport()">+ Créer un nouveau rapport</button>`;
+    html += _searchBarHtml('rapport', '🔍 Rechercher par nom, mois (ex: Juillet 2026), agent...');
 
     // Filtrer selon l'accès
-    const visibleRapports = cidRapports.filter(rap => canViewRapport(rap.id));
+    const allVisibleRapports = cidRapports.filter(rap => canViewRapport(rap.id));
+    const visibleRapports = allVisibleRapports.filter(rap => {
+        const agentTexts = [..._officiersToTexts(rap.form && rap.form.officiers), ...((rap.form && rap.form.agents) || [])];
+        return _matchesSearch('rapport', rap.name, rap.modified_at, agentTexts);
+    });
 
     if (visibleRapports.length === 0) {
-        html += `<div class="empty-state"><h2>Aucun rapport</h2><p>${canCreate ? 'Créez un nouveau rapport pour commencer' : 'Aucun rapport disponible'}</p></div>`;
+        html += `<div class="empty-state"><h2>${allVisibleRapports.length ? 'Aucun résultat' : 'Aucun rapport'}</h2><p>${allVisibleRapports.length ? 'Essayez une autre recherche' : (canCreate ? 'Créez un nouveau rapport pour commencer' : 'Aucun rapport disponible')}</p></div>`;
         container.innerHTML = html;
         return;
     }
@@ -8032,6 +8098,7 @@ async function renderMainMandatTab() {
 // ---- Vue liste ----
 function renderMandatsList(container) {
     const canCreate = getPermLevel() !== 'procureur';
+    _listSearchRerender.mandat = () => renderMandatsList(container);
 
     let html = `
     <div style="margin-bottom:18px;">
@@ -8040,11 +8107,13 @@ function renderMandatsList(container) {
     </div>`;
 
     if (canCreate) html += `<button class="btn-new-dossier" onclick="createMandat()">+ Créer un nouveau mandat</button>`;
+    html += _searchBarHtml('mandat', '🔍 Rechercher par nom, mois (ex: Juillet 2026), agent...');
 
-    const visible = cidMandats.filter(m => canViewMandat(m.id));
+    const allVisible = cidMandats.filter(m => canViewMandat(m.id));
+    const visible = allVisible.filter(m => _matchesSearch('mandat', m.name, m.modified_at, _officiersToTexts(m.form && m.form.officiers)));
 
     if (visible.length === 0) {
-        html += `<div class="empty-state"><h2>Aucun mandat</h2><p>${canCreate ? 'Créez un nouveau mandat pour commencer' : 'Aucun mandat disponible'}</p></div>`;
+        html += `<div class="empty-state"><h2>${allVisible.length ? 'Aucun résultat' : 'Aucun mandat'}</h2><p>${allVisible.length ? 'Essayez une autre recherche' : (canCreate ? 'Créez un nouveau mandat pour commencer' : 'Aucun mandat disponible')}</p></div>`;
         container.innerHTML = html;
         return;
     }
@@ -8860,6 +8929,7 @@ async function renderMainInjonctionTab() {
 // ---- Vue liste ----
 function renderInjonctionsList(container) {
     const canCreate = getPermLevel() !== 'procureur';
+    _listSearchRerender.injonction = () => renderInjonctionsList(container);
 
     let html = `
     <div style="margin-bottom:18px;">
@@ -8868,11 +8938,13 @@ function renderInjonctionsList(container) {
     </div>`;
 
     if (canCreate) html += `<button class="btn-new-dossier" onclick="createInjonction()">+ Créer une nouvelle injonction</button>`;
+    html += _searchBarHtml('injonction', '🔍 Rechercher par nom, mois (ex: Juillet 2026), agent...');
 
-    const visible = cidInjonctions.filter(m => canViewInjonction(m.id));
+    const allVisible = cidInjonctions.filter(m => canViewInjonction(m.id));
+    const visible = allVisible.filter(m => _matchesSearch('injonction', m.name, m.modified_at, _officiersToTexts(m.form && m.form.officiers)));
 
     if (visible.length === 0) {
-        html += `<div class="empty-state"><h2>Aucune injonction</h2><p>${canCreate ? 'Créez une nouvelle injonction pour commencer' : 'Aucune injonction disponible'}</p></div>`;
+        html += `<div class="empty-state"><h2>${allVisible.length ? 'Aucun résultat' : 'Aucune injonction'}</h2><p>${allVisible.length ? 'Essayez une autre recherche' : (canCreate ? 'Créez une nouvelle injonction pour commencer' : 'Aucune injonction disponible')}</p></div>`;
         container.innerHTML = html;
         return;
     }
@@ -9628,6 +9700,7 @@ async function renderMainBilanTab() {
 // ---- Vue liste ----
 function renderBilansList(container) {
     const canCreate = getPermLevel() !== 'procureur';
+    _listSearchRerender.bilan = () => renderBilansList(container);
 
     let html = `
     <div style="margin-bottom:18px;">
@@ -9636,11 +9709,13 @@ function renderBilansList(container) {
     </div>`;
 
     if (canCreate) html += `<button class="btn-new-dossier" onclick="createBilan()">+ Créer un nouveau bilan</button>`;
+    html += _searchBarHtml('bilan', '🔍 Rechercher par nom, mois (ex: Juillet 2026), agent...');
 
-    const visible = cidBilans.filter(m => canViewBilan(m.id));
+    const allVisible = cidBilans.filter(m => canViewBilan(m.id));
+    const visible = allVisible.filter(m => _matchesSearch('bilan', m.name, m.modified_at, _officiersToTexts(m.form && m.form.officiers)));
 
     if (visible.length === 0) {
-        html += `<div class="empty-state"><h2>Aucun bilan</h2><p>${canCreate ? 'Créez un nouveau bilan pour commencer' : 'Aucun bilan disponible'}</p></div>`;
+        html += `<div class="empty-state"><h2>${allVisible.length ? 'Aucun résultat' : 'Aucun bilan'}</h2><p>${allVisible.length ? 'Essayez une autre recherche' : (canCreate ? 'Créez un nouveau bilan pour commencer' : 'Aucun bilan disponible')}</p></div>`;
         container.innerHTML = html;
         return;
     }
