@@ -665,6 +665,35 @@
         .dcard-btn-del:hover { background: rgba(211,47,47,0.2); }
         /* ===== END CINEMATIC CARD ===== */
 
+        /* ===== GROUPEMENT PAR MOIS + CARTES COMPACTES ===== */
+        .month-group { margin-bottom: 22px; }
+        .month-group-header {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 12px; font-weight: 800; color: #C9A227;
+            text-transform: uppercase; letter-spacing: 1px;
+            padding: 6px 0 8px; margin-bottom: 10px;
+            border-bottom: 1px solid rgba(201,162,39,0.18);
+        }
+        .month-group-count {
+            background: rgba(201,162,39,0.14); color: #C9A227;
+            font-size: 10px; font-weight: 800; padding: 1px 8px;
+            border-radius: 20px; letter-spacing: 0.3px;
+        }
+        .dossiers-grid-compact {
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+        }
+        .dossiers-grid-compact .dossier-card-top { padding: 11px 12px 9px; gap: 9px; }
+        .dossiers-grid-compact .dossier-card-icon { width: 32px; height: 32px; font-size: 16px; border-radius: 9px; }
+        .dossiers-grid-compact .dossier-card h3 { font-size: 12.5px; margin-bottom: 4px; }
+        .dossiers-grid-compact .dossier-card-meta span { font-size: 9.5px; }
+        .dossiers-grid-compact .dossier-card-actions { padding: 8px 10px 10px; gap: 5px; }
+        .dossiers-grid-compact .dossier-card-actions-row { gap: 4px; }
+        .dossiers-grid-compact .dcard-btn { padding: 6px 4px; font-size: 9.5px; }
+        .dossiers-grid-compact .dcard-btn-open { padding: 8px; font-size: 11px; }
+        .dossiers-grid-compact .dossier-card::before { height: 3px; }
+        /* ===== FIN GROUPEMENT PAR MOIS ===== */
+
         /* ===== SIDEBAR ORGCHART ===== */
         .main-layout {
             display: flex;
@@ -1751,6 +1780,180 @@ async function sbFetch(path, options = {}) {
     return text ? JSON.parse(text) : null;
 }
 
+// ==================== GROUPEMENT PAR MOIS (listes de dossiers/rapports/etc.) ====================
+const MONTH_NAMES_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+
+function _parseFrDate(str) {
+    if (!str || typeof str !== 'string') return null;
+    const parts = str.split('/');
+    if (parts.length !== 3) return null;
+    const d = parseInt(parts[0], 10), m = parseInt(parts[1], 10), y = parseInt(parts[2], 10);
+    if (!d || !m || !y) return null;
+    const dt = new Date(y, m - 1, d);
+    return isNaN(dt.getTime()) ? null : dt;
+}
+
+function _monthGroupLabel(dateStr) {
+    const dt = _parseFrDate(dateStr);
+    if (!dt) return 'Date inconnue';
+    return `${MONTH_NAMES_FR[dt.getMonth()]} ${dt.getFullYear()}`;
+}
+
+function _monthGroupSortKey(dateStr) {
+    const dt = _parseFrDate(dateStr);
+    if (!dt) return -999999;
+    return dt.getFullYear() * 12 + dt.getMonth();
+}
+
+// items: tableau d'objets ; getDateFn: item -> string date (dd/mm/yyyy) ; getCardHtmlFn: item -> HTML de la carte
+function renderGroupedByMonth(items, getDateFn, getCardHtmlFn) {
+    if (!items.length) return '';
+    const groups = {};
+    items.forEach(item => {
+        const dateStr = getDateFn(item);
+        const label = _monthGroupLabel(dateStr);
+        if (!groups[label]) groups[label] = { key: _monthGroupSortKey(dateStr), htmls: [] };
+        groups[label].htmls.push(getCardHtmlFn(item));
+    });
+    const sortedLabels = Object.keys(groups).sort((a, b) => groups[b].key - groups[a].key);
+    return sortedLabels.map(label => `
+        <div class="month-group">
+            <div class="month-group-header">📅 ${label} <span class="month-group-count">${groups[label].htmls.length}</span></div>
+            <div class="dossiers-grid dossiers-grid-compact">${groups[label].htmls.join('')}</div>
+        </div>
+    `).join('');
+}
+
+
+// Système générique : vérifie périodiquement Supabase et rafraîchit l'affichage
+// dès qu'un autre membre ajoute/modifie/supprime quelque chose, sans jamais
+// écraser ce que l'utilisateur est en train de taper (pause automatique si édition récente).
+
+const _lastEditTimes = {}; // { mandat: timestamp, injonction: timestamp, ... }
+function _touchEditTime(moduleKey) { _lastEditTimes[moduleKey] = Date.now(); }
+function _getLastEditTime(moduleKey) { return _lastEditTimes[moduleKey] || 0; }
+
+// Détecte automatiquement dans quel module l'utilisateur tape, sans avoir à modifier
+// chaque fonction de sauvegarde individuellement.
+document.addEventListener('input', (e) => {
+    const containerMap = {
+        mainMandatContent: 'mandat',
+        mainInjonctionContent: 'injonction',
+        mainBilanContent: 'bilan',
+        mainRapportContent: 'rapport',
+        mainDepositionContent: 'deposition'
+    };
+    for (const [containerId, moduleKey] of Object.entries(containerMap)) {
+        if (e.target.closest && e.target.closest('#' + containerId)) { _touchEditTime(moduleKey); return; }
+    }
+}, true);
+
+const _modulePollers = {};
+
+function createRealtimePoller(moduleKey, config) {
+    // config: { supabaseKey, localStorageKey, getList, containerId, getCurrentId, renderListFn, renderEditorFn }
+    let timer = null;
+    let lastHash = null;
+
+    async function tick() {
+        try {
+            const rows = await sbFetch(`org_settings?key=eq.${config.supabaseKey}&select=value`);
+            if (!rows || !rows[0]) return;
+            const remoteList = JSON.parse(rows[0].value || '[]');
+            const remoteHash = JSON.stringify(remoteList).length + '_' + remoteList.length + '_' + remoteList.map(x => x.modified_at || '').join(',');
+            if (remoteHash === lastHash) return;
+            lastHash = remoteHash;
+
+            const currentId = config.getCurrentId();
+            // Si l'utilisateur tape activement dans ce module, on patiente pour ne rien écraser
+            if (Date.now() - _getLastEditTime(moduleKey) < 15000) return;
+
+            const list = config.getList();
+            list.length = 0;
+            list.push(...remoteList);
+            localStorage.setItem(config.localStorageKey, JSON.stringify(list));
+
+            const container = document.getElementById(config.containerId);
+            if (!container) return;
+
+            if (currentId) {
+                const stillExists = list.find(x => x.id === currentId);
+                if (!stillExists) return;
+                const focused = document.activeElement;
+                const focusedId = focused ? focused.id : null;
+                const scrollTop = container.scrollTop;
+                config.renderEditorFn(container);
+                container.scrollTop = scrollTop;
+                if (focusedId) { const el = document.getElementById(focusedId); if (el) el.focus(); }
+                _showRealtimeNotif();
+            } else {
+                config.renderListFn(container);
+            }
+        } catch(e) { /* silencieux : pas grave si un cycle échoue, le suivant réessaiera */ }
+    }
+
+    return {
+        start() {
+            this.stop();
+            lastHash = null;
+            timer = setInterval(tick, 8000);
+        },
+        stop() {
+            if (timer) { clearInterval(timer); timer = null; }
+        }
+    };
+}
+
+function _showRealtimeNotif() {
+    const el = document.getElementById('successMsgDossiers');
+    if (!el) return;
+    el.textContent = '🔄 Mis à jour par un autre membre';
+    el.style.display = 'block';
+    el.style.background = '#1565c0';
+    setTimeout(() => { el.style.display = 'none'; el.style.background = ''; }, 2500);
+}
+
+function stopAllModulePollers() {
+    Object.values(_modulePollers).forEach(p => p.stop());
+}
+
+_modulePollers.mandat = createRealtimePoller('mandat', {
+    supabaseKey: 'cid_mandats',
+    localStorageKey: 'cid_mandats',
+    getList: () => cidMandats,
+    containerId: 'mainMandatContent',
+    getCurrentId: () => currentMandatId,
+    renderListFn: renderMandatsList,
+    renderEditorFn: renderMandatEditor
+});
+_modulePollers.injonction = createRealtimePoller('injonction', {
+    supabaseKey: 'cid_injonctions',
+    localStorageKey: 'cid_injonctions',
+    getList: () => cidInjonctions,
+    containerId: 'mainInjonctionContent',
+    getCurrentId: () => currentInjonctionId,
+    renderListFn: renderInjonctionsList,
+    renderEditorFn: renderInjonctionEditor
+});
+_modulePollers.bilan = createRealtimePoller('bilan', {
+    supabaseKey: 'cid_bilans',
+    localStorageKey: 'cid_bilans',
+    getList: () => cidBilans,
+    containerId: 'mainBilanContent',
+    getCurrentId: () => currentBilanId,
+    renderListFn: renderBilansList,
+    renderEditorFn: renderBilanEditor
+});
+_modulePollers.rapport = createRealtimePoller('rapport', {
+    supabaseKey: 'cid_rapports',
+    localStorageKey: 'cid_rapports',
+    getList: () => cidRapports,
+    containerId: 'mainRapportContent',
+    getCurrentId: () => currentRapportId,
+    renderListFn: renderRapportsList,
+    renderEditorFn: renderRapportEditor
+});
+
 const sb = {
     async getAccounts() {
         return await sbFetch('accounts?select=*&order=created_at.desc');
@@ -2151,7 +2354,7 @@ async function renderDossiersList() {
         return;
     }
 
-    container.innerHTML = `<div class="dossiers-grid">${filteredList.map(d => `
+    container.innerHTML = renderGroupedByMonth(filteredList, d => d.modified_at, d => `
         <div class="dossier-card">
             <div class="dossier-card-top">
                 <div class="dossier-card-icon">📁</div>
@@ -2174,7 +2377,7 @@ async function renderDossiersList() {
                     ${canDeleteDossier() ? `<button class="dcard-btn dcard-btn-del" onclick="deleteDossier('${d.id}')">🗑 Suppr.</button>` : ''}
                 </div>` : ''}
             </div>
-        </div>`).join('')}</div>`;
+        </div>`);
 }
 
 
@@ -4916,6 +5119,7 @@ function switchMainTab(tab) {
     if (tab === 'documents' && getPermLevel() === 'procureur') return;
     if (tab === 'carte' && !_carteTabAllowed()) return;
     if (tab !== 'carte' && typeof _carte3DActive !== 'undefined' && _carte3DActive) { _carte3DActive = false; _destroy3DTerrain(); }
+    stopAllModulePollers();
 
     const tabIdMap = { dossiers:'tabDossiers', carte:'tabCarte', orgchart:'tabOrgChart', documents:'tabDocuments', deposition:'tabDeposition', rapport:'tabRapport' };
     const contentIdMap = { dossiers:'tabContentDossiers', carte:'tabContentCarte', orgchart:'tabContentOrgChart', documents:'tabContentDocuments', deposition:'tabContentDeposition', rapport:'tabContentRapport', mandat:'tabContentMandat', injonction:'tabContentInjonction', bilan:'tabContentBilan' };
@@ -4943,10 +5147,10 @@ function switchMainTab(tab) {
     if (tab === 'orgchart') { loadOrgMembersFromSupabase().then(() => renderOrgChartTab()); }
     if (tab === 'documents') renderDocumentsTab();
     if (tab === 'deposition') { currentDepositionId = null; renderMainDepositionTab(); }
-    if (tab === 'rapport') { currentRapportId = null; renderMainRapportTab(); }
-    if (tab === 'mandat') { renderMainMandatTab(); }
-    if (tab === 'injonction') { renderMainInjonctionTab(); }
-    if (tab === 'bilan') { renderMainBilanTab(); }
+    if (tab === 'rapport') { currentRapportId = null; renderMainRapportTab(); _modulePollers.rapport.start(); }
+    if (tab === 'mandat') { renderMainMandatTab(); _modulePollers.mandat.start(); }
+    if (tab === 'injonction') { renderMainInjonctionTab(); _modulePollers.injonction.start(); }
+    if (tab === 'bilan') { renderMainBilanTab(); _modulePollers.bilan.start(); }
     if (tab === 'carte') { initCarte(); setTimeout(() => { if(_carteMap) { _carteMap.invalidateSize(true); } }, 300); }
     // Onglet Carte : la page prend toute la largeur de l'écran pour un affichage plus grand
     const dossiersContainer = document.getElementById('dossiersPageContainer');
@@ -6558,7 +6762,7 @@ async function renderDepositionsList(container) {
         return;
     }
 
-    html += `<div class="dossiers-grid">` + list.map(dep => `
+    html += renderGroupedByMonth(list, dep => dep.modified_at, dep => `
         <div class="dossier-card">
             <div class="dossier-card-top">
                 <div class="dossier-card-icon">📄</div>
@@ -6581,7 +6785,7 @@ async function renderDepositionsList(container) {
                     ${canDeleteDossier() ? `<button class="dcard-btn dcard-btn-del" onclick="deleteDeposition('${dep.id}')">🗑 Suppr.</button>` : ''}
                 </div>` : ''}
             </div>
-        </div>`).join('') + `</div>`;
+        </div>`);
 
     container.innerHTML = html;
 }
@@ -7195,7 +7399,7 @@ function rapEsc(s){ return (s||'').toString().replace(/&/g,'&amp;').replace(/</g
 
 function blankRapportForm() {
     return {
-        lieu: '', heure: '', objet: '', agents: [''],
+        lieu: '', heure: '', objet: '', agents: [''], officiers: [],
         blocs: [{ titre: '', texte: '', photos: [] }]
     };
 }
@@ -7264,7 +7468,7 @@ function renderRapportsList(container) {
         return;
     }
 
-    html += `<div class="dossiers-grid">` + visibleRapports.map(rap => `
+    html += renderGroupedByMonth(visibleRapports, rap => rap.modified_at, rap => `
         <div class="dossier-card">
             <div class="dossier-card-top">
                 <div class="dossier-card-icon">📋</div>
@@ -7286,7 +7490,7 @@ function renderRapportsList(container) {
                     ${canDeleteDossier() ? `<button class="dcard-btn dcard-btn-del" onclick="deleteRapport('${rap.id}')">🗑 Suppr.</button>` : ''}
                 </div>` : ''}
             </div>
-        </div>`).join('') + `</div>`;
+        </div>`);
 
     container.innerHTML = html;
 }
@@ -7364,6 +7568,157 @@ function rapDelAgent(id, i) {
     saveCidRapports();
     renderMainRapportTab();
 }
+
+// ---- Sélecteur d'officiers (même système que Mandat/Injonction/Bilan) ----
+function rapCanWrite() { return canEditDoc('rapport', currentRapportId); }
+function rapForm() {
+    const rap = cidRapports.find(r => r.id === currentRapportId);
+    return rap ? (rap.form || (rap.form = blankRapportForm())) : null;
+}
+function rapSaveOfficiersData() {
+    const rap = cidRapports.find(r => r.id === currentRapportId);
+    if (rap) rap.modified_at = new Date().toLocaleDateString('fr-FR');
+    saveCidRapports();
+}
+
+function rapOfficierChipHtml(o, i) {
+    const canWrite = rapCanWrite();
+    const delBtn = canWrite ? `<button type="button" onclick="rapRemoveOfficier(${i})" style="background:rgba(211,47,47,0.1);border:1px solid rgba(211,47,47,0.2);color:#ef5350;cursor:pointer;font-size:11px;padding:3px 7px;border-radius:6px;font-weight:700;margin-left:4px;">✕</button>` : '';
+    if (!o.username) {
+        return `<div style="background:linear-gradient(135deg,rgba(13,43,94,0.4),rgba(13,43,94,0.25));border:1px solid rgba(201,162,39,0.35);border-radius:10px;padding:8px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 2px 6px rgba(0,0,0,0.12);">
+            <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#0D2B5E,#1a4080);border:2px solid rgba(201,162,39,0.5);display:flex;align-items:center;justify-content:center;font-size:14px;color:#C9A227;flex-shrink:0;">👤</div>
+            <div style="font-size:13px;font-weight:700;color:#222;">${rapEsc(o.label)}</div>
+            ${delBtn}
+        </div>`;
+    }
+    const parts = o.label.split('|');
+    const grade = (parts[0]||'').trim();
+    const name = parts.slice(1).join('|').trim();
+    const initials = name.split(' ').filter(w=>w).map(w=>w[0]).slice(0,2).join('').toUpperCase() || '??';
+    return `<div style="background:linear-gradient(135deg,rgba(13,43,94,0.4),rgba(13,43,94,0.25));border:1px solid rgba(201,162,39,0.35);border-radius:10px;padding:8px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 2px 6px rgba(0,0,0,0.12);">
+        <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#0D2B5E,#1a4080);border:2px solid rgba(201,162,39,0.5);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#C9A227;flex-shrink:0;">${initials}</div>
+        <div>
+            <div style="font-size:10px;color:rgba(201,162,39,0.7);font-weight:700;letter-spacing:0.5px;text-transform:uppercase;">${rapEsc(grade)}</div>
+            <div style="font-size:13px;font-weight:700;color:#222;line-height:1.2;">${rapEsc(name)}</div>
+        </div>
+        ${delBtn}
+    </div>`;
+}
+
+function rapRenderOfficiers() {
+    const chips = document.getElementById('rapOfficiersChips');
+    const f = rapForm();
+    if (!chips || !f) return;
+    if (!f.officiers) f.officiers = [];
+    chips.innerHTML = f.officiers.map((o, i) => rapOfficierChipHtml(o, i)).join('')
+        || `<span style="font-size:13px;color:#888;font-style:italic;">Aucun agent sélectionné</span>`;
+    const addWrap = document.getElementById('rapOfficiersAddWrap');
+    if (addWrap) addWrap.style.display = rapCanWrite() ? '' : 'none';
+    rapRenderSignatures();
+}
+
+function rapRenderSignatures() {
+    const wrap = document.getElementById('rapSignaturesWrap');
+    const f = rapForm();
+    if (!wrap || !f) return;
+    const officiers = f.officiers || [];
+    if (!officiers.length) { wrap.innerHTML = ''; return; }
+    wrap.innerHTML = officiers.map((o, i) => {
+        let grade = '', name = '';
+        if (o.username) {
+            const parts = (o.label || '').split('|');
+            grade = (parts[0] || '').trim();
+            name = parts.slice(1).join('|').trim();
+        } else {
+            name = (o.label || '').replace(/^@/, '');
+            grade = 'Agent';
+        }
+        const angle = (((name.length * 7 + i * 13) % 9) - 4) * 0.6;
+        return `<div class="m-signature-card">
+            <div class="m-signature-ink">
+                <div class="m-signature-script" style="transform:rotate(${angle}deg);">${rapEsc(name || '—')}</div>
+            </div>
+            <div class="m-signature-underline"></div>
+            <div class="m-signature-readable-name">${rapEsc(name)}</div>
+            <div class="m-signature-caps">${rapEsc(grade)}</div>
+        </div>`;
+    }).join('');
+}
+
+async function rapPopulateOfficiersList() {
+    if (!_editorAccountsCache.length) await loadEditorAccounts();
+    const list = document.getElementById('rapOfficiersList');
+    const f = rapForm();
+    if (!list || !f) return;
+    const current = (f.officiers || []).map(o => o.username).filter(Boolean);
+    list.innerHTML = _editorAccountsCache.map(a => bilanOfficierItemHtml(a, current)).join('')
+        || `<div style="font-size:12px;color:#888;font-style:italic;padding:6px;">Aucun compte enregistré</div>`;
+}
+
+function rapFilterOfficiersDropdown(query) {
+    const list = document.getElementById('rapOfficiersList');
+    if (!list) return;
+    const q = query.toLowerCase();
+    list.querySelectorAll('label[data-label]').forEach(el => {
+        el.style.display = el.dataset.label.toLowerCase().includes(q) ? '' : 'none';
+    });
+}
+
+function rapToggleOfficiersDropdown() {
+    if (!rapCanWrite()) return;
+    const dd = document.getElementById('rapOfficiersDropdown');
+    const arrow = document.getElementById('rapOfficiersArrow');
+    if (!dd) return;
+    const isOpen = dd.style.display !== 'none';
+    dd.style.display = isOpen ? 'none' : 'block';
+    if (arrow) arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
+    if (!isOpen) {
+        rapPopulateOfficiersList();
+        setTimeout(() => { const s = document.getElementById('rapOfficiersSearch'); if (s) { s.value = ''; s.focus(); } }, 80);
+    }
+}
+
+function rapConfirmOfficiers() {
+    if (!rapCanWrite()) return;
+    const dd = document.getElementById('rapOfficiersDropdown');
+    const list = document.getElementById('rapOfficiersList');
+    const f = rapForm();
+    if (!f) return;
+    const checkedBoxes = [...(list||dd||document).querySelectorAll('input[type=checkbox]:checked')];
+    const memberEntries = checkedBoxes.map(cb => ({ username: cb.value, label: cb.dataset.label || cb.value }));
+    const customOnes = (f.officiers||[]).filter(o => !o.username);
+    f.officiers = [...memberEntries, ...customOnes];
+    rapSaveOfficiersData();
+    rapRenderOfficiers();
+    if (dd) dd.style.display = 'none';
+    const arrow = document.getElementById('rapOfficiersArrow');
+    if (arrow) arrow.style.transform = '';
+}
+
+function rapAddCustomOfficier() {
+    if (!rapCanWrite()) return;
+    const input = document.getElementById('rapOfficiersCustomInput');
+    const f = rapForm();
+    if (!input || !f) return;
+    let val = input.value.trim();
+    if (!val) return;
+    if (!val.startsWith('@')) val = '@' + val;
+    if (!f.officiers) f.officiers = [];
+    if (!f.officiers.some(o => o.label === val)) f.officiers.push({ username: null, label: val });
+    input.value = '';
+    rapSaveOfficiersData();
+    rapRenderOfficiers();
+}
+
+function rapRemoveOfficier(i) {
+    if (!rapCanWrite()) return;
+    const f = rapForm();
+    if (!f) return;
+    f.officiers.splice(i, 1);
+    rapSaveOfficiersData();
+    rapRenderOfficiers();
+}
+
 // ---- Helpers blocs ----
 function rapGetBlocs(rap) {
     if (!rap.form.blocs) {
@@ -7694,7 +8049,7 @@ function renderMandatsList(container) {
         return;
     }
 
-    html += `<div class="dossiers-grid">` + visible.map(m => {
+    html += renderGroupedByMonth(visible, m => m.modified_at, m => {
         const canWrite = canEditMandat(m.id);
         return `
         <div class="dossier-card">
@@ -7718,7 +8073,7 @@ function renderMandatsList(container) {
                 </div>
             </div>
         </div>`;
-    }).join('') + `</div>`;
+    });
 
     container.innerHTML = html;
 }
@@ -8522,7 +8877,7 @@ function renderInjonctionsList(container) {
         return;
     }
 
-    html += `<div class="dossiers-grid">` + visible.map(m => {
+    html += renderGroupedByMonth(visible, m => m.modified_at, m => {
         const canWrite = canEditInjonction(m.id);
         return `
         <div class="dossier-card">
@@ -8546,7 +8901,7 @@ function renderInjonctionsList(container) {
                 </div>
             </div>
         </div>`;
-    }).join('') + `</div>`;
+    });
 
     container.innerHTML = html;
 }
@@ -9290,7 +9645,7 @@ function renderBilansList(container) {
         return;
     }
 
-    html += `<div class="dossiers-grid">` + visible.map(m => {
+    html += renderGroupedByMonth(visible, m => m.modified_at, m => {
         const canWrite = canEditBilan(m.id);
         return `
         <div class="dossier-card">
@@ -9314,7 +9669,7 @@ function renderBilansList(container) {
                 </div>
             </div>
         </div>`;
-    }).join('') + `</div>`;
+    });
 
     container.innerHTML = html;
 }
@@ -9902,6 +10257,7 @@ function renderRapportEditor(container) {
     const canWrite = canEditDoc('rapport', rap.id);
     const f = rap.form || (rap.form = blankRapportForm());
     if (!f.agents || !f.agents.length) f.agents = [''];
+    if (!f.officiers) f.officiers = [];
     if (!f.photos) f.photos = [];
     const id = rap.id;
     const dis = canWrite ? '' : 'disabled';
@@ -9952,18 +10308,26 @@ function renderRapportEditor(container) {
             </div>
 
             <!-- Agents concernés -->
-            <div style="background:rgba(13,43,94,0.05);border-radius:10px;padding:16px;margin-bottom:16px;border:1px solid rgba(201,162,39,0.1);">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-                    <div style="font-size:10px;color:#C9A227;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;">Agents concernés</div>
-                    ${canWrite ? `<button onclick="rapAddAgent('${id}')" style="background:rgba(201,162,39,0.1);color:#C9A227;border:1px solid rgba(201,162,39,0.3);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;">+ Ajouter</button>` : ''}
+            <div class="mandat-doc" style="background:rgba(13,43,94,0.05);border-radius:10px;padding:16px;margin-bottom:16px;border:1px solid rgba(201,162,39,0.1);">
+                <div style="font-size:10px;color:#C9A227;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;">Agents concernés</div>
+                <div id="rapOfficiersChips" style="display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 10px;"></div>
+                <div id="rapOfficiersAddWrap" style="position:relative;display:${canWrite ? '' : 'none'};">
+                    <button type="button" onclick="rapToggleOfficiersDropdown()" style="width:100%;padding:10px 14px;border:1px solid rgba(201,162,39,0.3);border-radius:10px;font-size:13px;font-weight:700;background:rgba(13,43,94,0.15);color:#C9A227;text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-family:Georgia,serif;">
+                        <span style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">👤</span> Sélectionner des agents...</span>
+                        <span id="rapOfficiersArrow" style="font-size:12px;transition:transform 0.2s;">▾</span>
+                    </button>
+                    <div id="rapOfficiersDropdown" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:#f7f7f7;border:1px solid rgba(201,162,39,0.3);border-radius:12px;max-height:280px;overflow-y:auto;z-index:200;box-shadow:0 12px 32px rgba(0,0,0,0.3);padding:8px;">
+                        <div style="padding:8px 10px 10px;border-bottom:1px solid rgba(201,162,39,0.15);margin-bottom:6px;">
+                            <input type="text" id="rapOfficiersSearch" placeholder="🔍 Rechercher..." oninput="rapFilterOfficiersDropdown(this.value)" style="width:100%;padding:7px 10px;border:1px solid #ccc;border-radius:7px;font-size:13px;background:#fff;color:#111;box-sizing:border-box;font-family:Georgia,serif;">
+                        </div>
+                        <div id="rapOfficiersList"></div>
+                        <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(201,162,39,0.15);">
+                            <input type="text" id="rapOfficiersCustomInput" placeholder="@pseudo (hors liste)" onkeydown="if(event.key==='Enter'){event.preventDefault();rapAddCustomOfficier();}" style="flex:1;padding:6px 9px;border:1px solid #ccc;border-radius:6px;font-size:12px;font-family:Georgia,serif;">
+                            <button type="button" onclick="rapAddCustomOfficier()" style="background:#555;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:700;">+</button>
+                        </div>
+                    </div>
+                    <button type="button" onclick="rapConfirmOfficiers()" style="width:100%;margin-top:8px;padding:10px;background:linear-gradient(135deg,#C9A227,#e0b830);color:#0D2B5E;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:900;letter-spacing:0.3px;box-shadow:0 3px 10px rgba(201,162,39,0.25);font-family:Georgia,serif;">✅ Confirmer la sélection</button>
                 </div>
-                ${f.agents.map((agent, ai) => `
-                <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
-                    <span style="color:#C9A227;font-weight:700;font-size:13px;min-width:16px;">•</span>
-                    <input type="text" value="${rapEsc(agent)}" ${dis} oninput="rapAgent('${id}',${ai},this.value);rapMarkField('${id}','agent_'+${ai});this.nextElementSibling&&(this.nextElementSibling.outerHTML=rapMetaLabel(cidRapports.find(r=>r.id==='${id}'),'agent_'+${ai}))" placeholder="Grade | Prénom Nom" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:7px;font-size:15px;font-weight:700;background:var(--input-bg);color:var(--text);">
-                        ${rapMetaLabel(rap,'agent_'+ai)}
-                    ${canWrite && f.agents.length > 1 ? `<button onclick="rapDelAgent('${id}',${ai})" style="background:rgba(211,47,47,0.1);color:#d32f2f;border:1px solid rgba(211,47,47,0.2);padding:4px 8px;border-radius:6px;cursor:pointer;font-size:11px;">✕</button>` : ''}
-                </div>`).join('')}
             </div>
 
             <!-- Blocs texte + photos -->
@@ -9997,8 +10361,12 @@ function renderRapportEditor(container) {
                 </div>`).join('')}
                 ${canWrite ? `<button onclick="rapAddBloc('${id}')" style="width:100%;padding:10px;background:rgba(201,162,39,0.06);color:#C9A227;border:1px dashed rgba(201,162,39,0.3);border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;">+ Ajouter un bloc</button>` : ''}
             </div>
+
+            <div class="mandat-doc"><div id="rapSignaturesWrap" class="m-signatures-wrap"></div></div>
         </div>
     </div>`;
+
+    rapRenderOfficiers();
 }
 
 // ---- Sauvegarde manuelle ----
