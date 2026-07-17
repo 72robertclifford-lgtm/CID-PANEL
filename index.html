@@ -1809,6 +1809,22 @@ async function sbFetch(path, options = {}) {
     return text ? JSON.parse(text) : null;
 }
 
+// Upsert atomique (insert ou update en une seule requête) dans org_settings.
+// Remplace le pattern DELETE puis POST qui pouvait provoquer des erreurs 409
+// quand deux sauvegardes se chevauchaient (ex: frappe rapide + sauvegarde différée).
+async function sbUpsertSetting(key, value) {
+    await fetch(`${SUPABASE_URL}/rest/v1/org_settings?on_conflict=key`, {
+        method: 'POST',
+        headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates,return=minimal'
+        },
+        body: JSON.stringify({ key, value })
+    });
+}
+
 // ==================== GROUPEMENT PAR MOIS (listes de dossiers/rapports/etc.) ====================
 const MONTH_NAMES_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
@@ -2529,7 +2545,7 @@ async function backToDossiers() {
         stopAutosave();
         showSuccessEditor('⏳ Sauvegarde en cours...');
         document.getElementById('successMsgEditor').style.display = 'block';
-        try { await saveData(); } catch(e) { console.error(e); }
+        try { await _saveDataNow(); } catch(e) { console.error(e); }
         currentDossierId = null;
         showPage('pageDossiers');
         renderDossiersList();
@@ -2682,7 +2698,7 @@ function loadPhotosLocally(dossierId, data) {
     } catch(e) { return data; }
 }
 
-async function saveData() {
+async function _saveDataNow() {
     if (!currentDossierId || !currentUser) return;
     if (isSaving) return;
     isSaving = true;
@@ -2776,11 +2792,20 @@ async function saveData() {
     }
 }
 
+// Version "auto-save" utilisée par tous les champs (oninput) : attend une pause dans la frappe
+// avant d'écrire réellement dans Supabase, pour éviter une requête réseau à chaque caractère tapé.
+let _saveDataDebounceTimer = null;
+function saveData() {
+    if (!currentDossierId || !currentUser) return;
+    clearTimeout(_saveDataDebounceTimer);
+    _saveDataDebounceTimer = setTimeout(() => { _saveDataNow(); }, 700);
+}
+
 async function saveAndConfirm() {
     const btn = document.querySelector('.btn-save');
     if (btn) { btn.textContent = '⏳ Sauvegarde...'; btn.disabled = true; }
     try {
-        await saveData();
+        await _saveDataNow();
         showSuccessEditor('✅ Dossier sauvegardé avec succès !');
         if (btn) { btn.textContent = '✅ Sauvegardé !'; }
         setTimeout(() => { if (btn) { btn.textContent = '💾 Sauvegarder le dossier'; btn.disabled = false; } }, 2000);
@@ -2796,7 +2821,7 @@ function startAutosave() {
     if (autosaveInterval) clearInterval(autosaveInterval);
     autosaveInterval = setInterval(async () => {
         if (currentDossierId && currentUser) {
-            await saveData();
+            await _saveDataNow();
             showSuccessEditor('💾 Sauvegarde automatique effectuée');
         }
     }, 120000); // 2 minutes
@@ -5600,14 +5625,7 @@ async function saveDocuments(docs) {
     _cidDocumentsCache = docs;
     localStorage.setItem('cid_documents', JSON.stringify(docs));
     try {
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings?key=eq.cid_documents`, {
-            method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-        });
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings`, {
-            method: 'POST',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-            body: JSON.stringify({ key: 'cid_documents', value: JSON.stringify(docs) })
-        });
+        await sbUpsertSetting('cid_documents', JSON.stringify(docs));
     } catch(e) {}
 }
 
@@ -5828,18 +5846,10 @@ async function getDossierAccessList() {
     return JSON.parse(localStorage.getItem('cid_dossier_access') || '{}');
 }
 
-// Helper : sauvegarder une clé dans org_settings (DELETE + POST)
+// Helper : sauvegarder une clé dans org_settings (upsert atomique)
 async function orgSettingsSave(key, value) {
     try {
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings?key=eq.${key}`, {
-            method: 'DELETE',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-        });
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings`, {
-            method: 'POST',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-            body: JSON.stringify({ key, value })
-        });
+        await sbUpsertSetting(key, value);
         return true;
     } catch(e) { console.error('orgSettingsSave error:', e); return false; }
 }
@@ -5953,11 +5963,7 @@ async function loadOrgMembersFromSupabase() {
 
 async function syncOrgMembersToSupabase() {
     try {
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings`, {
-            method: 'POST',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-            body: JSON.stringify({ key: 'org_members', value: JSON.stringify(orgMembers) })
-        });
+        await sbUpsertSetting('org_members', JSON.stringify(orgMembers));
     } catch(e) { /* ignore */ }
 }
 
@@ -6058,15 +6064,7 @@ async function toggleDossierAccess(dossierId) {
     
     localStorage.setItem('cid_dossier_access', JSON.stringify(access));
     try {
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings?key=eq.dossier_access`, {
-            method: 'DELETE',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-        });
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings`, {
-            method: 'POST',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-            body: JSON.stringify({ key: 'dossier_access', value: JSON.stringify(access) })
-        });
+        await sbUpsertSetting('dossier_access', JSON.stringify(access));
     } catch(e) {}
     
     // Update button color immediately
@@ -6804,21 +6802,20 @@ async function loadCidDepositions() {
 async function saveCidDepositions() {
     localStorage.setItem('cid_depositions', JSON.stringify(cidDepositions));
     try {
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings?key=eq.cid_depositions`, {
-            method: 'DELETE',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-        });
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings`, {
-            method: 'POST',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-            body: JSON.stringify({ key: 'cid_depositions', value: JSON.stringify(cidDepositions) })
-        });
+        await sbUpsertSetting('cid_depositions', JSON.stringify(cidDepositions));
         // Mettre à jour le hash local pour ne pas se re-rendre soi-même
         if (currentDepositionId) {
             const dep = cidDepositions.find(d => d.id === currentDepositionId);
             if (dep) _interroLastHash = _hashInterro(dep);
         }
     } catch(e) {}
+}
+// Version différée utilisée pendant la frappe (évite une requête réseau par caractère tapé)
+let _depositionSaveDebounceTimer = null;
+function saveCidDepositionsDebounced() {
+    localStorage.setItem('cid_depositions', JSON.stringify(cidDepositions));
+    clearTimeout(_depositionSaveDebounceTimer);
+    _depositionSaveDebounceTimer = setTimeout(() => { saveCidDepositions(); }, 700);
 }
 
 // ---- Entrée principale (appelée par switchMainTab) ----
@@ -6990,7 +6987,7 @@ function depField(id, field, value) {
     if (!dep) return;
     dep.form[field] = value;
     dep.modified_at = new Date().toLocaleDateString('fr-FR');
-    saveCidDepositions();
+    saveCidDepositionsDebounced();
 }
 function depQR(id, qi, key, value) {
     _lastInterroEditTime = Date.now();
@@ -6998,21 +6995,21 @@ function depQR(id, qi, key, value) {
     if (!dep || !dep.form.qr[qi]) return;
     dep.form.qr[qi][key] = value;
     dep.modified_at = new Date().toLocaleDateString('fr-FR');
-    saveCidDepositions();
+    saveCidDepositionsDebounced();
 }
 function depAddQR(id) {
     const dep = cidDepositions.find(d => d.id === id);
     if (!dep) return;
     if (!dep.form.qr) dep.form.qr = [];
     dep.form.qr.push({q:'',r:''});
-    saveCidDepositions();
+    saveCidDepositionsDebounced();
     renderMainDepositionTab();
 }
 function depDelQR(id, qi) {
     const dep = cidDepositions.find(d => d.id === id);
     if (!dep) return;
     dep.form.qr.splice(qi, 1);
-    saveCidDepositions();
+    saveCidDepositionsDebounced();
     renderMainDepositionTab();
 }
 
@@ -7566,16 +7563,15 @@ async function loadCidRapports() {
 async function saveCidRapports() {
     localStorage.setItem('cid_rapports', JSON.stringify(cidRapports));
     try {
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings?key=eq.cid_rapports`, {
-            method: 'DELETE',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-        });
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings`, {
-            method: 'POST',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-            body: JSON.stringify({ key: 'cid_rapports', value: JSON.stringify(cidRapports) })
-        });
+        await sbUpsertSetting('cid_rapports', JSON.stringify(cidRapports));
     } catch(e) {}
+}
+// Version différée utilisée pendant la frappe (évite une requête réseau par caractère tapé)
+let _rapportSaveDebounceTimer = null;
+function saveCidRapportsDebounced() {
+    localStorage.setItem('cid_rapports', JSON.stringify(cidRapports));
+    clearTimeout(_rapportSaveDebounceTimer);
+    _rapportSaveDebounceTimer = setTimeout(() => { saveCidRapports(); }, 700);
 }
 
 // ---- Entrée principale ----
@@ -7704,27 +7700,27 @@ function rapField(id, field, value) {
     if (!rap) return;
     rap.form[field] = value;
     rap.modified_at = new Date().toLocaleDateString('fr-FR');
-    saveCidRapports();
+    saveCidRapportsDebounced();
 }
 function rapAgent(id, i, value) {
     const rap = cidRapports.find(r => r.id === id);
     if (!rap) return;
     rap.form.agents[i] = value;
     rap.modified_at = new Date().toLocaleDateString('fr-FR');
-    saveCidRapports();
+    saveCidRapportsDebounced();
 }
 function rapAddAgent(id) {
     const rap = cidRapports.find(r => r.id === id);
     if (!rap) return;
     rap.form.agents.push('');
-    saveCidRapports();
+    saveCidRapportsDebounced();
     renderMainRapportTab();
 }
 function rapDelAgent(id, i) {
     const rap = cidRapports.find(r => r.id === id);
     if (!rap || rap.form.agents.length <= 1) return;
     rap.form.agents.splice(i, 1);
-    saveCidRapports();
+    saveCidRapportsDebounced();
     renderMainRapportTab();
 }
 
@@ -7737,7 +7733,7 @@ function rapForm() {
 function rapSaveOfficiersData() {
     const rap = cidRapports.find(r => r.id === currentRapportId);
     if (rap) rap.modified_at = new Date().toLocaleDateString('fr-FR');
-    saveCidRapports();
+    saveCidRapportsDebounced();
 }
 
 function rapOfficierChipHtml(o, i) {
@@ -7892,20 +7888,20 @@ function rapBlocField(id, bi, field, value) {
     if (!rap) return;
     rapGetBlocs(rap)[bi][field] = value;
     rap.modified_at = new Date().toLocaleDateString('fr-FR');
-    saveCidRapports();
+    saveCidRapportsDebounced();
 }
 function rapAddBloc(id) {
     const rap = cidRapports.find(r => r.id === id);
     if (!rap) return;
     rapGetBlocs(rap).push({ titre: '', texte: '', photos: [] });
-    saveCidRapports();
+    saveCidRapportsDebounced();
     renderMainRapportTab();
 }
 function rapDelBloc(id, bi) {
     const rap = cidRapports.find(r => r.id === id);
     if (!rap || rapGetBlocs(rap).length <= 1) return;
     rap.form.blocs.splice(bi, 1);
-    saveCidRapports();
+    saveCidRapportsDebounced();
     renderMainRapportTab();
 }
 async function rapAddPhoto(id, bi, input) {
@@ -7936,7 +7932,7 @@ function rapDelPhoto(id, bi, pi) {
     const rap = cidRapports.find(r => r.id === id);
     if (!rap) return;
     rap.form.blocs[bi].photos.splice(pi, 1);
-    saveCidRapports();
+    saveCidRapportsDebounced();
     renderMainRapportTab();
 }
 
@@ -8136,14 +8132,7 @@ async function loadCidMandats() {
 async function saveCidMandats() {
     localStorage.setItem('cid_mandats', JSON.stringify(cidMandats));
     try {
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings?key=eq.cid_mandats`, {
-            method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-        });
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings`, {
-            method: 'POST',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-            body: JSON.stringify({ key: 'cid_mandats', value: JSON.stringify(cidMandats) })
-        });
+        await sbUpsertSetting('cid_mandats', JSON.stringify(cidMandats));
     } catch(e) {}
 }
 
@@ -8338,10 +8327,12 @@ function mandatForm() {
     const m = cidMandats.find(x => x.id === currentMandatId);
     return m ? m.form : null;
 }
+let _mandatSaveDebounceTimer = null;
 function mandatSaveData() {
     const m = cidMandats.find(x => x.id === currentMandatId);
     if (m) m.modified_at = new Date().toLocaleDateString('fr-FR');
-    saveCidMandats();
+    clearTimeout(_mandatSaveDebounceTimer);
+    _mandatSaveDebounceTimer = setTimeout(() => { saveCidMandats(); }, 700);
 }
 
 // ---- Éditeur (une page façon document officiel) ----
@@ -8967,14 +8958,7 @@ async function loadCidInjonctions() {
 async function saveCidInjonctions() {
     localStorage.setItem('cid_injonctions', JSON.stringify(cidInjonctions));
     try {
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings?key=eq.cid_injonctions`, {
-            method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-        });
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings`, {
-            method: 'POST',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-            body: JSON.stringify({ key: 'cid_injonctions', value: JSON.stringify(cidInjonctions) })
-        });
+        await sbUpsertSetting('cid_injonctions', JSON.stringify(cidInjonctions));
     } catch(e) {}
 }
 
@@ -9163,10 +9147,12 @@ function injonctionForm() {
     const m = cidInjonctions.find(x => x.id === currentInjonctionId);
     return m ? m.form : null;
 }
+let _injonctionSaveDebounceTimer = null;
 function injonctionSaveData() {
     const m = cidInjonctions.find(x => x.id === currentInjonctionId);
     if (m) m.modified_at = new Date().toLocaleDateString('fr-FR');
-    saveCidInjonctions();
+    clearTimeout(_injonctionSaveDebounceTimer);
+    _injonctionSaveDebounceTimer = setTimeout(() => { saveCidInjonctions(); }, 700);
 }
 
 // ---- Éditeur (une page façon document officiel) ----
@@ -9738,14 +9724,7 @@ async function loadCidBilans() {
 async function saveCidBilans() {
     localStorage.setItem('cid_bilans', JSON.stringify(cidBilans));
     try {
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings?key=eq.cid_bilans`, {
-            method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-        });
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings`, {
-            method: 'POST',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-            body: JSON.stringify({ key: 'cid_bilans', value: JSON.stringify(cidBilans) })
-        });
+        await sbUpsertSetting('cid_bilans', JSON.stringify(cidBilans));
     } catch(e) {}
 }
 
@@ -9930,10 +9909,12 @@ function bilanForm() {
     const m = cidBilans.find(x => x.id === currentBilanId);
     return m ? m.form : null;
 }
+let _bilanSaveDebounceTimer = null;
 function bilanSaveData() {
     const m = cidBilans.find(x => x.id === currentBilanId);
     if (m) m.modified_at = new Date().toLocaleDateString('fr-FR');
-    saveCidBilans();
+    clearTimeout(_bilanSaveDebounceTimer);
+    _bilanSaveDebounceTimer = setTimeout(() => { saveCidBilans(); }, 700);
 }
 
 // ---- Éditeur (une page façon document officiel) ----
@@ -10672,14 +10653,7 @@ async function loadDocEditors() {
 async function saveDocEditors() {
     localStorage.setItem('cid_doc_editors', JSON.stringify(_docEditors));
     try {
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings?key=eq.doc_editors`, {
-            method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-        });
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings`, {
-            method: 'POST',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-            body: JSON.stringify({ key: 'doc_editors', value: JSON.stringify(_docEditors) })
-        });
+        await sbUpsertSetting('doc_editors', JSON.stringify(_docEditors));
     } catch(e) {}
 }
 
@@ -10872,14 +10846,7 @@ async function loadRapportAccessList() {
 
 async function saveRapportAccess() {
     try {
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings?key=eq.rapport_access`, {
-            method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-        });
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings`, {
-            method: 'POST',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-            body: JSON.stringify({ key: 'rapport_access', value: JSON.stringify(_rapportAccess) })
-        });
+        await sbUpsertSetting('rapport_access', JSON.stringify(_rapportAccess));
     } catch(e) {}
 }
 
@@ -10970,14 +10937,7 @@ async function toggleInterroAccess(interroId) {
 
     localStorage.setItem('cid_interro_access', JSON.stringify(access));
     try {
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings?key=eq.interro_access`, {
-            method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-        });
-        await fetch(`${SUPABASE_URL}/rest/v1/org_settings`, {
-            method: 'POST',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-            body: JSON.stringify({ key: 'interro_access', value: JSON.stringify(access) })
-        });
+        await sbUpsertSetting('interro_access', JSON.stringify(access));
     } catch(e) {}
 
     const isOpen = (access[interroId] || []).length > 0;
