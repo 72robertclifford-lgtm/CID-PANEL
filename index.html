@@ -665,47 +665,62 @@
         .dcard-btn-del:hover { background: rgba(211,47,47,0.2); }
         /* ===== END CINEMATIC CARD ===== */
 
-        /* ===== GROUPEMENT PAR MOIS + CARTES COMPACTES ===== */
-        .month-group { margin-bottom: 22px; }
+        /* ===== GROUPEMENT PAR MOIS + CARTES COMPACTES (fidèle à la DA du site) ===== */
+        .month-group { margin-bottom: 24px; }
         .month-group-header {
-            display: flex; align-items: center; gap: 8px;
+            display: flex; align-items: center; gap: 9px;
             font-size: 12px; font-weight: 800; color: #C9A227;
-            text-transform: uppercase; letter-spacing: 1px;
-            padding: 6px 0 8px; margin-bottom: 10px;
-            border-bottom: 1px solid rgba(201,162,39,0.18);
+            text-transform: uppercase; letter-spacing: 1.1px;
+            padding: 7px 12px; margin-bottom: 12px;
+            background: rgba(13,43,94,0.12);
+            border-left: 3px solid #C9A227;
+            border-radius: 0 8px 8px 0;
+            cursor: pointer;
+            user-select: none;
         }
+        .month-group-header:hover { background: rgba(13,43,94,0.2); }
+        .month-group-arrow {
+            display: inline-block;
+            font-size: 11px;
+            transition: transform 0.18s ease;
+        }
+        .month-group.collapsed { margin-bottom: 10px; }
+        .month-group.collapsed .dossiers-grid { display: none; }
         .month-group-count {
-            background: rgba(201,162,39,0.14); color: #C9A227;
-            font-size: 10px; font-weight: 800; padding: 1px 8px;
+            background: rgba(201,162,39,0.16); color: #C9A227;
+            font-size: 10px; font-weight: 800; padding: 1px 9px;
             border-radius: 20px; letter-spacing: 0.3px;
         }
         .dossiers-grid-compact {
-            grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-            gap: 10px;
+            grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+            gap: 14px;
         }
-        .dossiers-grid-compact .dossier-card-top { padding: 9px 10px 7px; gap: 7px; }
-        .dossiers-grid-compact .dossier-card-icon { width: 26px; height: 26px; font-size: 13px; border-radius: 8px; }
+        .dossiers-grid-compact .dossier-card-top { padding: 13px 14px 10px; gap: 11px; }
+        .dossiers-grid-compact .dossier-card-icon {
+            width: 36px; height: 36px; font-size: 17px; border-radius: 10px;
+        }
         .dossiers-grid-compact .dossier-card h3 {
-            font-size: 11.5px; margin-bottom: 3px; line-height: 1.25;
+            font-size: 13px; margin-bottom: 5px; line-height: 1.3;
             white-space: normal; overflow: visible; text-overflow: unset;
             word-break: break-word; display: block;
         }
-        .dossiers-grid-compact .dossier-card-meta span { font-size: 9px; }
-        .dossiers-grid-compact .dossier-card-actions { padding: 7px 8px 8px; gap: 4px; }
-        .dossiers-grid-compact .dossier-card-actions-row { gap: 3px; }
-        .dossiers-grid-compact .dcard-btn { padding: 5px 3px; font-size: 9px; }
-        .dossiers-grid-compact .dcard-btn-open { padding: 7px; font-size: 10px; }
-        .dossiers-grid-compact .dossier-card::before { height: 2px; }
-        /* La carte survolée/cliquée grossit et passe au-dessus des autres */
+        .dossiers-grid-compact .dossier-card-meta { gap: 4px; }
+        .dossiers-grid-compact .dossier-card-meta span { font-size: 10px; }
+        .dossiers-grid-compact .dossier-card-actions { padding: 9px 11px 11px; gap: 6px; }
+        .dossiers-grid-compact .dossier-card-actions-row { gap: 5px; }
+        .dossiers-grid-compact .dcard-btn { padding: 7px 4px; font-size: 10px; }
+        .dossiers-grid-compact .dcard-btn-open { padding: 9px; font-size: 12px; }
+        .dossiers-grid-compact .dossier-card::before { height: 3px; }
+        /* La carte survolée/cliquée grossit légèrement et passe au-dessus des autres */
         .dossiers-grid-compact .dossier-card {
             transition: transform 0.18s cubic-bezier(.34,1.56,.64,1), box-shadow 0.18s ease, z-index 0s;
         }
         .dossiers-grid-compact .dossier-card:hover {
-            transform: scale(1.12);
+            transform: scale(1.06);
             z-index: 5;
-            box-shadow: 0 18px 36px rgba(201,162,39,0.32), 0 6px 16px rgba(0,0,0,0.22);
+            box-shadow: 0 16px 34px rgba(201,162,39,0.28), 0 5px 14px rgba(0,0,0,0.2);
         }
-        .dossiers-grid-compact .dossier-card:active { transform: scale(1.16); }
+        .dossiers-grid-compact .dossier-card:active { transform: scale(1.08); }
         /* ===== FIN GROUPEMENT PAR MOIS ===== */
 
         /* ===== SIDEBAR ORGCHART ===== */
@@ -1820,7 +1835,19 @@ function _monthGroupSortKey(dateStr) {
 }
 
 // items: tableau d'objets ; getDateFn: item -> string date (dd/mm/yyyy) ; getCardHtmlFn: item -> HTML de la carte
-function renderGroupedByMonth(items, getDateFn, getCardHtmlFn) {
+let _monthGroupCollapsed = {};
+try { _monthGroupCollapsed = JSON.parse(localStorage.getItem('cid_month_collapsed') || '{}'); } catch(e) { _monthGroupCollapsed = {}; }
+
+function toggleMonthGroup(gid) {
+    _monthGroupCollapsed[gid] = !_monthGroupCollapsed[gid];
+    localStorage.setItem('cid_month_collapsed', JSON.stringify(_monthGroupCollapsed));
+    const el = document.getElementById('mg-' + gid);
+    if (el) el.classList.toggle('collapsed', _monthGroupCollapsed[gid]);
+    const arrow = document.getElementById('mg-arrow-' + gid);
+    if (arrow) arrow.style.transform = _monthGroupCollapsed[gid] ? 'rotate(-90deg)' : '';
+}
+
+function renderGroupedByMonth(items, getDateFn, getCardHtmlFn, moduleKey) {
     if (!items.length) return '';
     const groups = {};
     items.forEach(item => {
@@ -1830,12 +1857,18 @@ function renderGroupedByMonth(items, getDateFn, getCardHtmlFn) {
         groups[label].htmls.push(getCardHtmlFn(item));
     });
     const sortedLabels = Object.keys(groups).sort((a, b) => groups[b].key - groups[a].key);
-    return sortedLabels.map(label => `
-        <div class="month-group">
-            <div class="month-group-header">📅 ${label} <span class="month-group-count">${groups[label].htmls.length}</span></div>
+    return sortedLabels.map(label => {
+        const gid = (moduleKey || 'm') + '-' + label.replace(/\s+/g, '_');
+        const collapsed = !!_monthGroupCollapsed[gid];
+        return `
+        <div class="month-group${collapsed ? ' collapsed' : ''}" id="mg-${gid}">
+            <div class="month-group-header" onclick="toggleMonthGroup('${gid}')">
+                <span id="mg-arrow-${gid}" class="month-group-arrow" style="${collapsed ? 'transform:rotate(-90deg);' : ''}">▾</span>
+                📅 ${label} <span class="month-group-count">${groups[label].htmls.length}</span>
+            </div>
             <div class="dossiers-grid dossiers-grid-compact">${groups[label].htmls.join('')}</div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
 }
 
 // ---- Recherche (nom, mois, agents) sur les listes de documents ----
@@ -2432,7 +2465,7 @@ async function renderDossiersList() {
                     ${canDeleteDossier() ? `<button class="dcard-btn dcard-btn-del" onclick="deleteDossier('${d.id}')">🗑 Suppr.</button>` : ''}
                 </div>` : ''}
             </div>
-        </div>`);
+        </div>`, 'dossiers');
 }
 
 
@@ -4020,6 +4053,7 @@ window.addEventListener('load', () => setTimeout(() => window.print(), 900));
                 <input type="file" class="file-input" accept="image/*" onchange="handleOrgMemberPhoto(this)">
             </div>
             <img id="omPhotoPreview" style="width:100%;max-height:200px;object-fit:cover;border-radius:8px;margin-top:10px;display:none;border:2px solid #C9A227;">
+            <button type="button" id="omRemovePhotoBtn" onclick="removeOrgMemberPhoto()" style="display:none;width:100%;margin-top:8px;padding:9px;background:rgba(211,47,47,0.1);color:#d32f2f;border:1px solid rgba(211,47,47,0.3);border-radius:8px;cursor:pointer;font-weight:700;font-size:12.5px;">🗑 Retirer la photo</button>
         </div>
         <div style="display:flex;gap:10px;">
             <button onclick="saveOrgMember()" style="flex:1;padding:12px;background:linear-gradient(135deg,#C9A227,#e0b830);color:#0D2B5E;border:none;border-radius:8px;font-weight:800;font-size:14px;cursor:pointer;">✅ Sauvegarder</button>
@@ -4827,6 +4861,8 @@ function showOrgMemberModal(existing = null) {
     document.getElementById('omPhotoPreview').src = existing ? existing.photo || '' : '';
     document.getElementById('omPhotoPreview').style.display = existing && existing.photo ? 'block' : 'none';
     document.getElementById('omCurrentPhoto').value = existing ? existing.photo || '' : '';
+    const omRemoveBtn = document.getElementById('omRemovePhotoBtn');
+    if (omRemoveBtn) omRemoveBtn.style.display = (existing && existing.photo) ? 'block' : 'none';
     modal.classList.add('active');
 }
 
@@ -4841,18 +4877,30 @@ async function handleOrgMemberPhoto(input) {
         document.getElementById('omPhotoPreview').src = urls[0];
         document.getElementById('omPhotoPreview').style.display = 'block';
         document.getElementById('omCurrentPhoto').value = urls[0];
+        const omRemoveBtn = document.getElementById('omRemovePhotoBtn');
+        if (omRemoveBtn) omRemoveBtn.style.display = 'block';
     }
+}
+
+function removeOrgMemberPhoto() {
+    document.getElementById('omPhotoPreview').src = '';
+    document.getElementById('omPhotoPreview').style.display = 'none';
+    document.getElementById('omCurrentPhoto').value = '';
+    const omRemoveBtn = document.getElementById('omRemovePhotoBtn');
+    if (omRemoveBtn) omRemoveBtn.style.display = 'none';
 }
 
 function saveOrgMember() {
     const id = document.getElementById('omId').value;
+    const photoVal = document.getElementById('omCurrentPhoto').value;
     const member = {
         id,
         first_name: document.getElementById('omFirstName').value.trim(),
         last_name: document.getElementById('omLastName').value.trim(),
         matricule: document.getElementById('omMatricule').value.trim() ? 'CID - ' + document.getElementById('omMatricule').value.trim() : '',
         grade: document.getElementById('omGrade').value,
-        photo: document.getElementById('omCurrentPhoto').value
+        photo: photoVal,
+        photoRemoved: !photoVal // empêche la resynchronisation d'une ancienne photo si elle a été volontairement retirée
     };
     const idx = orgMembers.findIndex(m => m.id === id);
     if (idx >= 0) orgMembers[idx] = member;
@@ -5001,6 +5049,7 @@ async function handleSidebarOrgDropById(e, memberId) {
     const idx = orgMembers.findIndex(m => m.id === memberId);
     if (idx >= 0) { 
         orgMembers[idx].photo = urls[0]; 
+        orgMembers[idx].photoRemoved = false;
         saveOrgMembersLocal(); 
         try { await sb.updateAccount(orgMembers[idx].username, { photo: urls[0] }); } catch(e) {}
         renderInlineOrg(); 
@@ -5059,13 +5108,15 @@ function editInlineOrgMember(gradeKey, slotIndex) {
 const _origSaveOrgMember = typeof saveOrgMember !== 'undefined' ? saveOrgMember : null;
 function saveOrgMember() {
     const id = document.getElementById('omId').value;
+    const photoVal = document.getElementById('omCurrentPhoto').value;
     const member = {
         id,
         first_name: document.getElementById('omFirstName').value.trim(),
         last_name: document.getElementById('omLastName').value.trim(),
         matricule: document.getElementById('omMatricule').value.trim() ? 'CID - ' + document.getElementById('omMatricule').value.trim() : '',
         grade: document.getElementById('omGrade').value,
-        photo: document.getElementById('omCurrentPhoto').value
+        photo: photoVal,
+        photoRemoved: !photoVal // empêche la resynchronisation d'une ancienne photo si elle a été volontairement retirée
     };
     const idx = orgMembers.findIndex(m => m.id === id);
     if (idx >= 0) orgMembers[idx] = member;
@@ -5416,7 +5467,7 @@ function saveOrgMemberProfile(username, firstName, lastName, matricule, photo) {
         if (firstName !== null) orgMembers[idx].first_name = firstName;
         if (lastName !== null) orgMembers[idx].last_name = lastName;
         if (matricule !== null) orgMembers[idx].matricule = matricule;
-        if (photo !== null) orgMembers[idx].photo = photo;
+        if (photo !== null) { orgMembers[idx].photo = photo; orgMembers[idx].photoRemoved = !photo; }
     } else {
         orgMembers.push({ id: Date.now().toString(), username, grade: 'detective', first_name: firstName||'', last_name: lastName||'', matricule: matricule||'', photo: photo||'' });
     }
@@ -5865,7 +5916,7 @@ async function loadOrgMembersFromSupabase() {
                 if (!acc.photo && !acc.matricule) return; // Nothing to sync
                 const idx = orgMembers.findIndex(m => m.username === acc.username);
                 if (idx >= 0) {
-                    if (acc.photo) orgMembers[idx].photo = acc.photo;
+                    if (acc.photo && !orgMembers[idx].photoRemoved) orgMembers[idx].photo = acc.photo;
                     if (acc.matricule) orgMembers[idx].matricule = acc.matricule;
                     if (acc.first_name) orgMembers[idx].first_name = acc.first_name;
                     if (acc.last_name) orgMembers[idx].last_name = acc.last_name;
@@ -5886,7 +5937,7 @@ async function loadOrgMembersFromSupabase() {
                 const idx = orgMembers.findIndex(m => m.username === sm.username || m.id === sm.id);
                 if (idx >= 0) {
                     // Keep most recent photo (non-empty wins)
-                    if (sm.photo && !orgMembers[idx].photo) orgMembers[idx].photo = sm.photo;
+                    if (sm.photo && !orgMembers[idx].photo && !orgMembers[idx].photoRemoved) orgMembers[idx].photo = sm.photo;
                     if (sm.matricule && !orgMembers[idx].matricule) orgMembers[idx].matricule = sm.matricule;
                 } else {
                     orgMembers.push(sm);
@@ -6845,7 +6896,7 @@ async function renderDepositionsList(container) {
                     ${canDeleteDossier() ? `<button class="dcard-btn dcard-btn-del" onclick="deleteDeposition('${dep.id}')">🗑 Suppr.</button>` : ''}
                 </div>` : ''}
             </div>
-        </div>`);
+        </div>`, 'deposition');
 
     container.innerHTML = html;
 }
@@ -6981,6 +7032,7 @@ function renderDepositionEditor(container) {
         <span style="font-size:16px;font-weight:700;color:#C9A227;flex:1;">${depEsc(dep.name)}</span>
         ${canWrite ? `<button class="btn-toolbar" id="interroBtnSave" style="background:#4caf50;color:white;font-weight:700;" onclick="saveInterroNow('${id}')">💾 Sauvegarder</button>` : ''}
         <button class="btn-toolbar" onclick="copyInterroLink('${id}')" style="background:#7B2D8B;color:white;">🔗 Copier le lien</button>
+        <button class="btn-toolbar" onclick="exportInterroToGoogleDocs('${id}')" style="background:rgba(15,157,88,0.15);color:#5fd68f;border:1px solid rgba(15,157,88,0.4);">📤 Exporter vers Google Docs</button>
         <button class="btn-toolbar" onclick="exportInterroPDF('${id}')" style="background:linear-gradient(135deg,#c0392b,#e74c3c);color:white;">📄 PDF</button>
         <button class="btn-toolbar" onclick="printCidDeposition('${id}')" style="background:#7B2D8B;color:white;">🖨️ Imprimer</button>
         ${canWrite ? `<button class="btn-toolbar" onclick="renameDeposition('${id}')" style="background:rgba(201,162,39,0.15);color:#C9A227;border:1px solid rgba(201,162,39,0.3);">✏️ Renommer</button>` : ''}
@@ -7189,6 +7241,38 @@ function copyInterroLink(id) {
         const owner = dep.username ? `@${dep.username}` : '';
         updateOgMeta(`${dep.name} — CID`, `📋 Interrogatoire${owner ? ' • '+owner : ''} · Crime Investigation Division · Cliquez pour consulter`);
     }
+}
+
+async function exportInterroToGoogleDocs(id) {
+    const dep = cidDepositions.find(d => d.id === id);
+    if (!dep || !dep.form) return;
+    const f = dep.form;
+    await exportToGoogleDocs(dep.name, (state) => {
+        _gAddLine(state, 'CRIME INVESTIGATION DIVISION', { bold: true, color: { red: 0.79, green: 0.64, blue: 0.15 }, fontSize: 10 });
+        _gAddLine(state, 'INTERROGATOIRE / DÉPOSITION', { bold: true, fontSize: 18, align: 'CENTER' });
+        _gAddSpacer(state);
+        _gAddLine(state, `Détective : ${f.detective || ''}`);
+        _gAddLine(state, `Groupe : ${f.groupe || ''}`);
+        _gAddLine(state, `Localisation : ${f.localisation || ''}`);
+        _gAddLine(state, `Lieu des faits : ${f.faitlieu || ''}   —   Date : ${f.faitdate || ''}`);
+        _gAddLine(state, `Horaires : ${f.hdebut || ''} — ${f.hfin || ''}`);
+        _gAddSectionTitle(state, 'Déposant');
+        _gAddLine(state, `Nom : ${f.depositaire || ''}`);
+        _gAddLine(state, `Mail : ${f.mail || ''}   —   Tél : ${f.tel || ''}`);
+        _gAddLine(state, `Véhicule : ${f.vehicule || ''}`);
+        _gAddLine(state, `Vêtements : ${f.vetement || ''}`);
+        _gAddLine(state, `Activités : ${f.activites || ''}`);
+        _gAddLine(state, `Locaux concernés : ${f.locaux || ''}`);
+        _gAddLine(state, `Perquisition : ${f.perqui || ''}   —   Avocat : ${f.avocat || ''}`);
+        _gAddSectionTitle(state, 'Questions / Réponses');
+        (f.qr || []).forEach((item, i) => {
+            _gAddLine(state, `${i + 1}. ${item.q || ''}`, { bold: true });
+            _gAddLine(state, item.r || '—');
+            _gAddSpacer(state);
+        });
+        _gAddSpacer(state);
+        _gAddLine(state, f.signature || '', { italic: true, align: 'END' });
+    });
 }
 
 // ===== POLLING TEMPS RÉEL — INTERROGATOIRES =====
@@ -7508,7 +7592,6 @@ async function renderMainRapportTab() {
 
 // ---- Vue liste ----
 function renderRapportsList(container) {
-    const canWrite = canEdit();
     const canCreate = getPermLevel() !== 'procureur';
     _listSearchRerender.rapport = () => renderRapportsList(container);
 
@@ -7534,7 +7617,9 @@ function renderRapportsList(container) {
         return;
     }
 
-    html += renderGroupedByMonth(visibleRapports, rap => rap.modified_at, rap => `
+    html += renderGroupedByMonth(visibleRapports, rap => rap.modified_at, rap => {
+        const canWriteThis = canEditRapport(rap.id);
+        return `
         <div class="dossier-card">
             <div class="dossier-card-top">
                 <div class="dossier-card-icon">📋</div>
@@ -7543,6 +7628,7 @@ function renderRapportsList(container) {
                     <div class="dossier-card-meta">
                         <span>@${rapEsc(rap.username)||'—'}</span>
                         <span>${rapEsc(rap.modified_at)}</span>
+                        ${canWriteThis ? '' : '<span title="Lecture seule — vous n\'êtes pas assigné à ce rapport">🔒</span>'}
                     </div>
                 </div>
             </div>
@@ -7552,11 +7638,12 @@ function renderRapportsList(container) {
                 <div class="dossier-card-actions-row">
 
                     <button class="dcard-btn" id="editorsbtn-rapport-${rap.id}" style="${getEditorsBtnStyle('rapport',rap.id)}" onclick="openEditorsModal('rapport','${rap.id}','${rap.name}')">${getEditorsBtnLabel('rapport',rap.id)}</button>
-                    ${canWrite ? `<button class="dcard-btn dcard-btn-rename" onclick="renameRapport('${rap.id}')">✏️ Renommer</button>` : ''}
+                    ${canWriteThis ? `<button class="dcard-btn dcard-btn-rename" onclick="renameRapport('${rap.id}')">✏️ Renommer</button>` : ''}
                     ${canDeleteDossier() ? `<button class="dcard-btn dcard-btn-del" onclick="deleteRapport('${rap.id}')">🗑 Suppr.</button>` : ''}
                 </div>` : ''}
             </div>
-        </div>`);
+        </div>`;
+    }, 'rapport');
 
     container.innerHTML = html;
 }
@@ -7565,7 +7652,13 @@ function renderRapportsList(container) {
 async function createRapport() { openRapportModal('create'); }
 async function _doCreateRapport(name) {
     const now = new Date().toLocaleDateString('fr-FR');
-    cidRapports.unshift({ id: Date.now().toString(), name: name.trim(), username: currentUser?currentUser.username:'', created_at: now, modified_at: now, form: blankRapportForm() });
+    const form = blankRapportForm();
+    // Le créateur est automatiquement assigné comme agent concerné (sinon il serait bloqué en lecture seule)
+    if (currentUser) {
+        const label = `${currentUser.grade||''} | ${currentUser.firstName||''} ${currentUser.lastName||''}`.trim();
+        form.officiers.push({ username: currentUser.username, label });
+    }
+    cidRapports.unshift({ id: Date.now().toString(), name: name.trim(), username: currentUser?currentUser.username:'', created_at: now, modified_at: now, form });
     await saveCidRapports();
     renderMainRapportTab();
 }
@@ -7636,7 +7729,7 @@ function rapDelAgent(id, i) {
 }
 
 // ---- Sélecteur d'officiers (même système que Mandat/Injonction/Bilan) ----
-function rapCanWrite() { return canEditDoc('rapport', currentRapportId); }
+function rapCanWrite() { return canEditRapport(currentRapportId); }
 function rapForm() {
     const rap = cidRapports.find(r => r.id === currentRapportId);
     return rap ? (rap.form || (rap.form = blankRapportForm())) : null;
@@ -8142,7 +8235,7 @@ function renderMandatsList(container) {
                 </div>
             </div>
         </div>`;
-    });
+    }, 'mandat');
 
     container.innerHTML = html;
 }
@@ -8973,7 +9066,7 @@ function renderInjonctionsList(container) {
                 </div>
             </div>
         </div>`;
-    });
+    }, 'injonction');
 
     container.innerHTML = html;
 }
@@ -9744,7 +9837,7 @@ function renderBilansList(container) {
                 </div>
             </div>
         </div>`;
-    });
+    }, 'bilan');
 
     container.innerHTML = html;
 }
@@ -10329,7 +10422,7 @@ async function confirmBilanModal() {
 function renderRapportEditor(container) {
     const rap = cidRapports.find(r => r.id === currentRapportId);
     if (!rap) { currentRapportId = null; renderRapportsList(container); return; }
-    const canWrite = canEditDoc('rapport', rap.id);
+    const canWrite = canEditRapport(rap.id);
     const f = rap.form || (rap.form = blankRapportForm());
     if (!f.agents || !f.agents.length) f.agents = [''];
     if (!f.officiers) f.officiers = [];
@@ -10345,6 +10438,7 @@ function renderRapportEditor(container) {
         <span style="font-size:15px;font-weight:700;color:#C9A227;flex:1;">${rapEsc(rap.name)}</span>
         ${canWrite ? `<button class="btn-toolbar" id="rapSaveBtn-${id}" style="background:#4caf50;color:white;font-weight:700;" onclick="saveRapportNow('${id}')">💾 Sauvegarder</button>` : ''}
         <button class="btn-toolbar" onclick="copyRapportLink('${id}')" style="background:#7B2D8B;color:white;">🔗 Copier le lien</button>
+        <button class="btn-toolbar" onclick="exportRapportToGoogleDocs('${id}')" style="background:rgba(15,157,88,0.15);color:#5fd68f;border:1px solid rgba(15,157,88,0.4);">📤 Exporter vers Google Docs</button>
         <button class="btn-toolbar" onclick="printRapport('${id}')" style="background:#555;color:white;">🖨️ Imprimer</button>
         ${canWrite ? `<button class="btn-toolbar" onclick="renameRapport('${id}')" style="background:rgba(201,162,39,0.15);color:#C9A227;border:1px solid rgba(201,162,39,0.3);">✏️ Renommer</button>` : ''}
     </div>
@@ -10510,6 +10604,27 @@ function copyRapportLink(id) {
         const objet = (rap.form && rap.form.objet) ? rap.form.objet : rap.name;
         updateOgMeta(`${objet} — CID`, `📋 Rapport${owner ? ' • '+owner : ''} · Crime Investigation Division · Cliquez pour consulter`);
     }
+}
+
+async function exportRapportToGoogleDocs(id) {
+    const rap = cidRapports.find(r => r.id === id);
+    if (!rap || !rap.form) return;
+    const f = rap.form;
+    const blocs = rapGetBlocs(rap);
+    await exportToGoogleDocs(rap.name, (state) => {
+        _gAddLine(state, 'CRIME INVESTIGATION DIVISION', { bold: true, color: { red: 0.79, green: 0.64, blue: 0.15 }, fontSize: 10 });
+        _gAddLine(state, "RAPPORT D'INVESTIGATION", { bold: true, fontSize: 18, align: 'CENTER' });
+        _gAddSpacer(state);
+        _gAddLine(state, `Lieu : ${f.lieu || ''}`);
+        _gAddLine(state, `Heure : ${f.heure || ''}`);
+        _gAddLine(state, `Objet : ${f.objet || ''}`);
+        blocs.forEach(bloc => {
+            _gAddSectionTitle(state, bloc.titre || 'Bloc');
+            _gAddLine(state, bloc.texte || '—');
+            (bloc.photos || []).forEach(url => _gAddImage(state, url));
+        });
+        _gAddSignatures(state, f.officiers);
+    });
 }
 
 // ===== MODALE RAPPORT =====
@@ -10783,6 +10898,19 @@ function canViewRapport(id) {
     if (getPermLevel() === 'procureur') return false;
     // Tous les autres grades (detective, senior, master, supervisor, commanding) : accès direct
     return true;
+}
+
+// Écriture sur un rapport : réservée aux agents ajoutés dans "Agents concernés"
+// (ou explicitement ajoutés via le bouton "Éditeurs"), sauf les grades
+// Master Investigator / Supervisor CID / Commanding qui ont toujours la main.
+function canEditRapport(id) {
+    if (!currentUser) return false;
+    if (getPermLevel() === 'supervisor') return true; // Master Investigator, Supervisor CID, Commanding
+    const rap = cidRapports.find(r => r.id === id);
+    if (!rap) return false;
+    const officiers = (rap.form && rap.form.officiers) || [];
+    if (officiers.some(o => o.username === currentUser.username)) return true;
+    return getDocEditors('rapport', id).includes(currentUser.username);
 }
 
 async function toggleRapportAccess(id) {
@@ -12779,6 +12907,7 @@ function renderCarteUI() {
                 <input type="file" class="file-input" accept="image/*" onchange="handleOrgMemberPhoto(this)">
             </div>
             <img id="omPhotoPreview" style="width:100%;max-height:200px;object-fit:cover;border-radius:8px;margin-top:10px;display:none;border:2px solid #C9A227;">
+            <button type="button" id="omRemovePhotoBtn" onclick="removeOrgMemberPhoto()" style="display:none;width:100%;margin-top:8px;padding:9px;background:rgba(211,47,47,0.1);color:#d32f2f;border:1px solid rgba(211,47,47,0.3);border-radius:8px;cursor:pointer;font-weight:700;font-size:12.5px;">🗑 Retirer la photo</button>
         </div>
         <div style="display:flex;gap:10px;">
             <button onclick="saveOrgMember()" style="flex:1;padding:12px;background:linear-gradient(135deg,#C9A227,#e0b830);color:#0D2B5E;border:none;border-radius:8px;font-weight:800;font-size:14px;cursor:pointer;">✅ Sauvegarder</button>
