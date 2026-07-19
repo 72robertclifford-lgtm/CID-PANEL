@@ -7959,6 +7959,7 @@ function _googleRequestAccessToken(forceConsent) {
         _googleTokenClient.callback = (resp) => {
             if (resp.error) { reject(new Error(resp.error)); return; }
             _googleAccessToken = resp.access_token;
+            localStorage.setItem('cid_google_consented', '1');
             resolve(resp.access_token);
         };
         _googleTokenClient.requestAccessToken({ prompt: forceConsent ? 'consent' : '' });
@@ -7967,6 +7968,17 @@ function _googleRequestAccessToken(forceConsent) {
 
 async function _googleGetToken() {
     if (_googleAccessToken) return _googleAccessToken;
+    const alreadyConsented = localStorage.getItem('cid_google_consented') === '1';
+    if (alreadyConsented) {
+        // Déjà autorisé avant sur ce navigateur : on redemande le jeton silencieusement,
+        // sans repasser par l'écran "Google n'a pas validé cette application".
+        try {
+            return await _googleRequestAccessToken(false);
+        } catch(e) {
+            // L'accès a peut-être été révoqué entre-temps : on repasse par l'écran de consentement.
+            return await _googleRequestAccessToken(true);
+        }
+    }
     return await _googleRequestAccessToken(true);
 }
 
@@ -8001,13 +8013,15 @@ async function _googleDocsBatchUpdate(documentId, requests) {
     if (!resp.ok) {
         const errTxt = await resp.text();
         console.error('Docs batchUpdate error:', errTxt);
-        throw new Error("Erreur lors de l'écriture du contenu dans le document.");
+        let detail = '';
+        try { detail = JSON.parse(errTxt).error?.message || ''; } catch(e) {}
+        throw new Error("Erreur lors de l'écriture du contenu dans le document." + (detail ? ' (' + detail + ')' : ''));
     }
     return await resp.json();
 }
 
 // ---- Constructeur séquentiel de contenu (texte stylé + images) ----
-function _gNewState() { return { pos: 1, requests: [] }; }
+function _gNewState(skipImages) { return { pos: 1, requests: [], skipImages: !!skipImages }; }
 
 function _gAddText(state, text, opts) {
     opts = opts || {};
@@ -8032,7 +8046,7 @@ function _gAddLine(state, text, opts) { _gAddText(state, (text || '') + '\n', op
 function _gAddSpacer(state) { _gAddText(state, '\n'); }
 
 function _gAddImage(state, uri, widthPt, heightPt) {
-    if (!uri) return;
+    if (!uri || state.skipImages) return;
     state.requests.push({
         insertInlineImage: {
             location: { index: state.pos },
@@ -8078,18 +8092,34 @@ function _gAddSignatures(state, officiers) {
 
 // Un seul clic : popup Google (choix du compte) → le document se crée directement.
 async function exportToGoogleDocs(title, buildFn) {
+    let created = null;
     try {
         showSuccessDossiers('🔐 Connexion à Google...');
         const state = _gNewState();
         buildFn(state);
-        const created = await _createGoogleDoc(title);
+        created = await _createGoogleDoc(title);
         showSuccessDossiers('📤 Écriture du contenu dans Google Docs...');
-        await _googleDocsBatchUpdate(created.documentId, state.requests);
-        showSuccessDossiers('✅ Document créé sur Google Docs !');
+        try {
+            await _googleDocsBatchUpdate(created.documentId, state.requests);
+            showSuccessDossiers('✅ Document créé sur Google Docs !');
+        } catch (writeErr) {
+            // Une photo cassée/inaccessible fait échouer TOUT le lot (Google traite le lot comme une seule
+            // transaction). On retente sans les images pour au moins récupérer le texte.
+            console.error('Échec avec images, nouvelle tentative sans images :', writeErr);
+            const stateNoImg = _gNewState(true);
+            buildFn(stateNoImg);
+            await _googleDocsBatchUpdate(created.documentId, stateNoImg.requests);
+            showSuccessDossiers("⚠️ Document créé, mais certaines photos n'ont pas pu être insérées (lien cassé ou inaccessible).");
+        }
         window.open(`https://docs.google.com/document/d/${created.documentId}/edit`, '_blank');
     } catch(e) {
         console.error(e);
-        alert("Erreur lors de l'export vers Google Docs : " + e.message);
+        if (created) {
+            alert("Le document Google Docs a été créé mais son contenu n'a pas pu être écrit : " + e.message + "\nTu peux l'ouvrir ici : https://docs.google.com/document/d/" + created.documentId + "/edit");
+            window.open(`https://docs.google.com/document/d/${created.documentId}/edit`, '_blank');
+        } else {
+            alert("Erreur lors de l'export vers Google Docs : " + e.message);
+        }
     }
 }
 
