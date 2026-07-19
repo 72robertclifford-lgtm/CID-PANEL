@@ -8091,13 +8091,54 @@ function _gAddSignatures(state, officiers) {
 }
 
 // Un seul clic : popup Google (choix du compte) → le document se crée directement.
+// Reconvertit une image (quel que soit son format d'origine, ex: WebP) en PNG et la réhéberge,
+// pour garantir un format que l'API Google Docs accepte toujours à l'insertion.
+async function _ensureGoogleFriendlyImageUrl(originalUrl) {
+    try {
+        const resp = await fetch(originalUrl);
+        if (!resp.ok) return null;
+        const blob = await resp.blob();
+        const bitmap = await createImageBitmap(blob);
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        canvas.getContext('2d').drawImage(bitmap, 0, 0);
+        const pngBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        if (!pngBlob) return null;
+        const file = new File([pngBlob], 'export.png', { type: 'image/png' });
+        const urls = await uploadFilesToImgbb([file]);
+        return urls[0] || null;
+    } catch(e) {
+        console.error('Conversion image pour Google Docs échouée :', e);
+        return null;
+    }
+}
+
+// Passe en revue toutes les images du document généré et les remplace par une version PNG fiable.
+async function _gPrepareImagesForGoogle(state) {
+    const imageRequests = state.requests.filter(r => r.insertInlineImage);
+    for (const req of imageRequests) {
+        const safeUrl = await _ensureGoogleFriendlyImageUrl(req.insertInlineImage.uri);
+        if (safeUrl) req.insertInlineImage.uri = safeUrl;
+    }
+}
+
 async function exportToGoogleDocs(title, buildFn) {
+    // Ouvre l'onglet TOUT DE SUITE (au moment du clic) pour que le navigateur ne le bloque pas :
+    // un window.open() appelé après plusieurs "await" n'est plus considéré comme déclenché par
+    // l'utilisateur et se fait silencieusement bloquer par les navigateurs.
+    const tab = window.open('about:blank', '_blank');
+    if (tab) {
+        tab.document.write('<body style="font-family:sans-serif;background:#0D2B5E;color:#C9A227;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;"><p>⏳ Préparation du document Google Docs...</p></body>');
+    }
     let created = null;
     try {
         showSuccessDossiers('🔐 Connexion à Google...');
         const state = _gNewState();
         buildFn(state);
         created = await _createGoogleDoc(title);
+        showSuccessDossiers('🖼️ Préparation des photos...');
+        await _gPrepareImagesForGoogle(state);
         showSuccessDossiers('📤 Écriture du contenu dans Google Docs...');
         try {
             await _googleDocsBatchUpdate(created.documentId, state.requests);
@@ -8111,13 +8152,16 @@ async function exportToGoogleDocs(title, buildFn) {
             await _googleDocsBatchUpdate(created.documentId, stateNoImg.requests);
             showSuccessDossiers("⚠️ Document créé, mais certaines photos n'ont pas pu être insérées (lien cassé ou inaccessible).");
         }
-        window.open(`https://docs.google.com/document/d/${created.documentId}/edit`, '_blank');
+        const docUrl = `https://docs.google.com/document/d/${created.documentId}/edit`;
+        if (tab && !tab.closed) tab.location.href = docUrl; else window.open(docUrl, '_blank');
     } catch(e) {
         console.error(e);
         if (created) {
-            alert("Le document Google Docs a été créé mais son contenu n'a pas pu être écrit : " + e.message + "\nTu peux l'ouvrir ici : https://docs.google.com/document/d/" + created.documentId + "/edit");
-            window.open(`https://docs.google.com/document/d/${created.documentId}/edit`, '_blank');
+            const docUrl = `https://docs.google.com/document/d/${created.documentId}/edit`;
+            alert("Le document Google Docs a été créé mais son contenu n'a pas pu être écrit : " + e.message + "\nTu peux l'ouvrir ici : " + docUrl);
+            if (tab && !tab.closed) tab.location.href = docUrl; else window.open(docUrl, '_blank');
         } else {
+            if (tab && !tab.closed) tab.close();
             alert("Erreur lors de l'export vers Google Docs : " + e.message);
         }
     }
