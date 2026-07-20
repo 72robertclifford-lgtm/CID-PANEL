@@ -7245,8 +7245,7 @@ async function exportInterroToGoogleDocs(id) {
     if (!dep || !dep.form) return;
     const f = dep.form;
     await exportToGoogleDocs(dep.name, (state) => {
-        _gAddLine(state, 'CRIME INVESTIGATION DIVISION', { bold: true, color: { red: 0.79, green: 0.64, blue: 0.15 }, fontSize: 10 });
-        _gAddLine(state, 'INTERROGATOIRE / DÉPOSITION', { bold: true, fontSize: 18, align: 'CENTER' });
+        _gAddTitleBlock(state, 'INTERROGATOIRE / DÉPOSITION');
         _gAddSpacer(state);
         _gAddLine(state, `Détective : ${f.detective || ''}`);
         _gAddLine(state, `Groupe : ${f.groupe || ''}`);
@@ -8021,7 +8020,7 @@ async function _googleDocsBatchUpdate(documentId, requests) {
 }
 
 // ---- Constructeur séquentiel de contenu (texte stylé + images) ----
-function _gNewState(skipImages) { return { pos: 1, requests: [], skipImages: !!skipImages }; }
+function _gNewState(skipImages) { return { pos: 1, requests: [..._gDocumentSetupRequests()], skipImages: !!skipImages }; }
 
 function _gAddText(state, text, opts) {
     opts = opts || {};
@@ -8038,11 +8037,16 @@ function _gAddText(state, text, opts) {
     if (fields.length) {
         state.requests.push({ updateTextStyle: { range: { startIndex: start, endIndex: state.pos }, textStyle, fields: fields.join(',') } });
     }
-    if (opts.align) {
-        state.requests.push({ updateParagraphStyle: { range: { startIndex: start, endIndex: state.pos }, paragraphStyle: { alignment: opts.align }, fields: 'alignment' } });
+    const pStyle = {}; const pFields = [];
+    if (opts.align) { pStyle.alignment = opts.align; pFields.push('alignment'); }
+    if (opts.spaceAbove !== undefined) { pStyle.spaceAbove = { magnitude: opts.spaceAbove, unit: 'PT' }; pFields.push('spaceAbove'); }
+    if (opts.spaceBelow !== undefined) { pStyle.spaceBelow = { magnitude: opts.spaceBelow, unit: 'PT' }; pFields.push('spaceBelow'); }
+    if (opts.lineSpacing) { pStyle.lineSpacing = opts.lineSpacing; pFields.push('lineSpacing'); }
+    if (pFields.length) {
+        state.requests.push({ updateParagraphStyle: { range: { startIndex: start, endIndex: state.pos }, paragraphStyle: pStyle, fields: pFields.join(',') } });
     }
 }
-function _gAddLine(state, text, opts) { _gAddText(state, (text || '') + '\n', opts); }
+function _gAddLine(state, text, opts) { _gAddText(state, (text || '') + '\n', Object.assign({ spaceBelow: 4 }, opts || {})); }
 function _gAddSpacer(state) { _gAddText(state, '\n'); }
 
 function _gAddImage(state, uri, widthPt, heightPt) {
@@ -8055,12 +8059,101 @@ function _gAddImage(state, uri, widthPt, heightPt) {
         }
     });
     state.pos += 1;
-    _gAddText(state, '\n');
+    _gAddText(state, '\n', { spaceBelow: 8 });
 }
 
+// Bloc d'en-tête façon papier à en-tête officiel : bandeau CID + titre + sous-titre + filet doré
+function _gAddTitleBlock(state, mainTitle) {
+    // Logo/blason officiel du site, centré, comme en haut de chaque document sur le CID Panel
+    const logoStart = state.pos;
+    _gAddImage(state, 'https://i.ibb.co/CKnCxfS/cid-badge.png', 90, 90);
+    state.requests.push({
+        updateParagraphStyle: {
+            range: { startIndex: logoStart, endIndex: state.pos },
+            paragraphStyle: { alignment: 'CENTER' },
+            fields: 'alignment'
+        }
+    });
+    _gAddLine(state, 'CRIME INVESTIGATION DIVISION', {
+        bold: true, color: { red: 0.79, green: 0.64, blue: 0.15 }, fontSize: 10, align: 'CENTER', spaceBelow: 2
+    });
+    const start = state.pos;
+    _gAddLine(state, mainTitle, { bold: true, fontSize: 22, color: { red: 0.05, green: 0.17, blue: 0.37 }, align: 'CENTER', spaceBelow: 4 });
+    state.requests.push({
+        updateParagraphStyle: {
+            range: { startIndex: start, endIndex: state.pos },
+            paragraphStyle: { namedStyleType: 'TITLE' },
+            fields: 'namedStyleType'
+        }
+    });
+    // On réapplique la couleur/taille par-dessus le style TITLE par défaut de Google
+    state.requests.push({
+        updateTextStyle: {
+            range: { startIndex: start, endIndex: state.pos - 1 },
+            textStyle: { bold: true, fontSize: { magnitude: 22, unit: 'PT' }, foregroundColor: { color: { rgbColor: { red: 0.05, green: 0.17, blue: 0.37 } } } },
+            fields: 'bold,fontSize,foregroundColor'
+        }
+    });
+    _gAddLine(state, 'Criminal Investigation Division', { italic: true, color: { red: 0.4, green: 0.4, blue: 0.4 }, fontSize: 10, align: 'CENTER', spaceBelow: 10 });
+    const ruleStart = state.pos;
+    _gAddLine(state, '', { spaceBelow: 10 });
+    state.requests.push({
+        updateParagraphStyle: {
+            range: { startIndex: ruleStart, endIndex: state.pos },
+            paragraphStyle: {
+                borderBottom: {
+                    color: { color: { rgbColor: { red: 0.79, green: 0.64, blue: 0.15 } } },
+                    width: { magnitude: 1.5, unit: 'PT' },
+                    padding: { magnitude: 0, unit: 'PT' },
+                    dashStyle: 'SOLID'
+                }
+            },
+            fields: 'borderBottom'
+        }
+    });
+}
+
+// Titre de section : vrai style "Titre 2" Google Docs (apparaît dans le plan du document),
+// avec un filet doré en dessous façon séparateur.
 function _gAddSectionTitle(state, text) {
     _gAddSpacer(state);
-    _gAddLine(state, text.toUpperCase(), { bold: true, color: { red: 0.05, green: 0.17, blue: 0.37 }, fontSize: 12 });
+    const start = state.pos;
+    _gAddLine(state, text.toUpperCase(), { spaceAbove: 4, spaceBelow: 6 });
+    state.requests.push({
+        updateParagraphStyle: {
+            range: { startIndex: start, endIndex: state.pos },
+            paragraphStyle: {
+                namedStyleType: 'HEADING_2',
+                borderBottom: {
+                    color: { color: { rgbColor: { red: 0.79, green: 0.64, blue: 0.15 } } },
+                    width: { magnitude: 0.75, unit: 'PT' },
+                    padding: { magnitude: 3, unit: 'PT' },
+                    dashStyle: 'SOLID'
+                }
+            },
+            fields: 'namedStyleType,borderBottom'
+        }
+    });
+    state.requests.push({
+        updateTextStyle: {
+            range: { startIndex: start, endIndex: state.pos - 1 },
+            textStyle: { bold: true, fontSize: { magnitude: 12, unit: 'PT' }, foregroundColor: { color: { rgbColor: { red: 0.05, green: 0.17, blue: 0.37 } } } },
+            fields: 'bold,fontSize,foregroundColor'
+        }
+    });
+}
+
+// Ajoute une liste de lignes avec une vraie puce Google Docs (au lieu d'un tiret manuel)
+function _gAddBulletItems(state, items, opts) {
+    if (!items || !items.length) return;
+    const start = state.pos;
+    items.forEach(item => _gAddLine(state, item, opts));
+    state.requests.push({
+        createParagraphBullets: {
+            range: { startIndex: start, endIndex: state.pos - 1 },
+            bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE'
+        }
+    });
 }
 
 function _gAddEntries(state, entries, emptyLabel) {
@@ -8069,7 +8162,24 @@ function _gAddEntries(state, entries, emptyLabel) {
         return;
     }
     entries.forEach(entry => {
-        _gAddLine(state, '📌 ' + (entry.date || '') + '   ' + (entry.text || ''));
+        const start = state.pos;
+        _gAddText(state, '📌 ' + (entry.date || ''), { bold: true, color: { red: 0.65, green: 0.49, blue: 0.06 }, fontSize: 10 });
+        _gAddLine(state, '   ' + (entry.text || ''), { spaceBelow: 4 });
+        state.requests.push({
+            updateParagraphStyle: {
+                range: { startIndex: start, endIndex: state.pos - 1 },
+                paragraphStyle: {
+                    borderLeft: {
+                        color: { color: { rgbColor: { red: 0.79, green: 0.64, blue: 0.15 } } },
+                        width: { magnitude: 2, unit: 'PT' },
+                        padding: { magnitude: 6, unit: 'PT' },
+                        dashStyle: 'SOLID'
+                    },
+                    indentStart: { magnitude: 6, unit: 'PT' }
+                },
+                fields: 'borderLeft,indentStart'
+            }
+        });
         (entry.photos || []).forEach(url => _gAddImage(state, url));
     });
 }
@@ -8083,11 +8193,26 @@ function _gOfficierLabel(o) {
 
 function _gAddSignatures(state, officiers) {
     _gAddSpacer(state);
-    _gAddLine(state, "Nous vous prions d'agréer, monsieur le procureur, l'expression de nos respectueuses et sincères salutations,");
+    _gAddLine(state, "Nous vous prions d'agréer, monsieur le procureur, l'expression de nos respectueuses et sincères salutations,", { italic: true, color: { red: 0.35, green: 0.35, blue: 0.35 } });
     _gAddSpacer(state);
     (officiers || []).forEach(o => {
-        _gAddLine(state, _gOfficierLabel(o), { italic: true, align: 'END' });
+        _gAddLine(state, _gOfficierLabel(o), { italic: true, align: 'END', fontSize: 13, spaceBelow: 6 });
     });
+}
+
+// Marges de page + police par défaut, pour un rendu plus soigné qu'un document Docs standard.
+function _gDocumentSetupRequests() {
+    return [{
+        updateDocumentStyle: {
+            documentStyle: {
+                marginTop: { magnitude: 50, unit: 'PT' },
+                marginBottom: { magnitude: 50, unit: 'PT' },
+                marginLeft: { magnitude: 56, unit: 'PT' },
+                marginRight: { magnitude: 56, unit: 'PT' }
+            },
+            fields: 'marginTop,marginBottom,marginLeft,marginRight'
+        }
+    }];
 }
 
 // Un seul clic : popup Google (choix du compte) → le document se crée directement.
@@ -8381,8 +8506,7 @@ async function exportMandatToGoogleDocs(id) {
     if (!m || !m.form) return;
     const f = m.form;
     await exportToGoogleDocs(m.name, (state) => {
-        _gAddLine(state, 'CRIME INVESTIGATION DIVISION', { bold: true, color: { red: 0.79, green: 0.64, blue: 0.15 }, fontSize: 10 });
-        _gAddLine(state, 'MANDAT DE PERQUISITION', { bold: true, fontSize: 18, align: 'CENTER' });
+        _gAddTitleBlock(state, 'MANDAT DE PERQUISITION');
         _gAddSpacer(state);
         _gAddLine(state, `Date : ${f.date || ''}`);
         _gAddLine(state, `Localisation : ${f.localisation || ''}`);
@@ -8398,7 +8522,7 @@ async function exportMandatToGoogleDocs(id) {
         _gAddLine(state, `Téléphone : ${f.tel || 'Inconnu'}`);
         _gAddLine(state, `Adresse : ${f.adresse || 'Inconnu'}`);
         _gAddSectionTitle(state, 'Faits');
-        (f.faits || []).filter(x => x && x.trim()).forEach(txt => _gAddLine(state, '▸ ' + txt));
+        _gAddBulletItems(state, (f.faits || []).filter(x => x && x.trim()));
         _gAddSectionTitle(state, 'Informations');
         _gAddLine(state, f.infoText || '—');
         _gAddEntries(state, f.entries, 'Aucune information complémentaire.');
@@ -9208,8 +9332,7 @@ async function exportInjonctionToGoogleDocs(id) {
     const f = m.form;
     const critereLabel = (INJONCTION_CRITERE_LABELS && INJONCTION_CRITERE_LABELS[f.critere]) || 'numéro de propriété';
     await exportToGoogleDocs(m.name, (state) => {
-        _gAddLine(state, 'CRIME INVESTIGATION DIVISION', { bold: true, color: { red: 0.79, green: 0.64, blue: 0.15 }, fontSize: 10 });
-        _gAddLine(state, "DEMANDE D'INJONCTION IMMOBILIÈRE", { bold: true, fontSize: 18, align: 'CENTER' });
+        _gAddTitleBlock(state, "DEMANDE D'INJONCTION IMMOBILIÈRE");
         _gAddSpacer(state);
         _gAddLine(state, `Fait à ${f.lieu || ''}, le ${f.date || ''}.`, { italic: true });
         _gAddSpacer(state);
@@ -9973,8 +10096,7 @@ async function exportBilanToGoogleDocs(id) {
     if (!m || !m.form) return;
     const f = m.form;
     await exportToGoogleDocs(m.name, (state) => {
-        _gAddLine(state, 'CRIME INVESTIGATION DIVISION', { bold: true, color: { red: 0.79, green: 0.64, blue: 0.15 }, fontSize: 10 });
-        _gAddLine(state, 'BILAN DE PERQUISITION DE PROPRIÉTÉ', { bold: true, fontSize: 18, align: 'CENTER' });
+        _gAddTitleBlock(state, 'BILAN DE PERQUISITION DE PROPRIÉTÉ');
         _gAddSpacer(state);
         _gAddLine(state, `Fait à ${f.lieu || ''}, le ${f.date || ''}.`, { italic: true });
 
@@ -10679,8 +10801,7 @@ async function exportRapportToGoogleDocs(id) {
     const f = rap.form;
     const blocs = rapGetBlocs(rap);
     await exportToGoogleDocs(rap.name, (state) => {
-        _gAddLine(state, 'CRIME INVESTIGATION DIVISION', { bold: true, color: { red: 0.79, green: 0.64, blue: 0.15 }, fontSize: 10 });
-        _gAddLine(state, "RAPPORT D'INVESTIGATION", { bold: true, fontSize: 18, align: 'CENTER' });
+        _gAddTitleBlock(state, "RAPPORT D'INVESTIGATION");
         _gAddSpacer(state);
         _gAddLine(state, `Lieu : ${f.lieu || ''}`);
         _gAddLine(state, `Heure : ${f.heure || ''}`);
