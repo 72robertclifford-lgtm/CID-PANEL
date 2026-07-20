@@ -8123,19 +8123,33 @@ async function _gPrepareImagesForGoogle(state) {
     }
 }
 
-async function exportToGoogleDocs(title, buildFn) {
-    // Ouvre l'onglet TOUT DE SUITE (au moment du clic) pour que le navigateur ne le bloque pas :
-    // un window.open() appelé après plusieurs "await" n'est plus considéré comme déclenché par
-    // l'utilisateur et se fait silencieusement bloquer par les navigateurs.
-    const tab = window.open('about:blank', '_blank');
-    if (tab) {
-        tab.document.write('<body style="font-family:sans-serif;background:#0D2B5E;color:#C9A227;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;"><p>⏳ Préparation du document Google Docs...</p></body>');
+// Affiche un bandeau avec un lien à cliquer soi-même pour ouvrir le document :
+// beaucoup plus fiable qu'un window.open() automatique, que les navigateurs bloquent
+// facilement dès qu'il y a eu ne serait-ce qu'un léger délai réseau avant.
+function _showOpenDocBanner(url, msg) {
+    let el = document.getElementById('gdocOpenBanner');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'gdocOpenBanner';
+        el.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;background:#0D2B5E;border:1px solid #C9A227;border-radius:12px;padding:14px 18px;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-width:320px;font-family:inherit;';
+        document.body.appendChild(el);
     }
+    el.innerHTML = `
+        <div style="color:#f0d98a;font-size:13px;font-weight:700;margin-bottom:10px;">${msg}</div>
+        <a href="${url}" target="_blank" rel="noopener" style="display:block;text-align:center;background:linear-gradient(135deg,#C9A227,#e0b830);color:#0D2B5E;font-weight:800;padding:10px;border-radius:8px;text-decoration:none;font-size:13px;">📄 Ouvrir le document</a>
+        <div onclick="document.getElementById('gdocOpenBanner').remove()" style="text-align:center;margin-top:8px;color:rgba(255,255,255,0.5);font-size:11px;cursor:pointer;">Fermer</div>
+    `;
+}
+
+async function exportToGoogleDocs(title, buildFn) {
     let created = null;
     try {
         showSuccessDossiers('🔐 Connexion à Google...');
         const state = _gNewState();
         buildFn(state);
+        // On authentifie et crée le document AVANT toute tentative d'ouverture d'onglet :
+        // Google a besoin d'ouvrir sa propre popup de connexion ici, et si on a nous-mêmes
+        // déjà ouvert une fenêtre avant, le navigateur bloque ensuite celle de Google.
         created = await _createGoogleDoc(title);
         showSuccessDossiers('🖼️ Préparation des photos...');
         await _gPrepareImagesForGoogle(state);
@@ -8153,15 +8167,13 @@ async function exportToGoogleDocs(title, buildFn) {
             showSuccessDossiers("⚠️ Document créé, mais certaines photos n'ont pas pu être insérées (lien cassé ou inaccessible).");
         }
         const docUrl = `https://docs.google.com/document/d/${created.documentId}/edit`;
-        if (tab && !tab.closed) tab.location.href = docUrl; else window.open(docUrl, '_blank');
+        _showOpenDocBanner(docUrl, '✅ Document créé sur Google Docs !');
     } catch(e) {
         console.error(e);
         if (created) {
             const docUrl = `https://docs.google.com/document/d/${created.documentId}/edit`;
-            alert("Le document Google Docs a été créé mais son contenu n'a pas pu être écrit : " + e.message + "\nTu peux l'ouvrir ici : " + docUrl);
-            if (tab && !tab.closed) tab.location.href = docUrl; else window.open(docUrl, '_blank');
+            _showOpenDocBanner(docUrl, "⚠️ Le document a été créé mais son contenu n'a pas pu être entièrement écrit : " + e.message);
         } else {
-            if (tab && !tab.closed) tab.close();
             alert("Erreur lors de l'export vers Google Docs : " + e.message);
         }
     }
