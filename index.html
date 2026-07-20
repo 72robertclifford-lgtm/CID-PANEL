@@ -8064,16 +8064,6 @@ function _gAddImage(state, uri, widthPt, heightPt) {
 
 // Bloc d'en-tête façon papier à en-tête officiel : bandeau CID + titre + sous-titre + filet doré
 function _gAddTitleBlock(state, mainTitle) {
-    // Logo/blason officiel du site, centré, comme en haut de chaque document sur le CID Panel
-    const logoStart = state.pos;
-    _gAddImage(state, 'https://i.ibb.co/CKnCxfS/cid-badge.png', 90, 90);
-    state.requests.push({
-        updateParagraphStyle: {
-            range: { startIndex: logoStart, endIndex: state.pos },
-            paragraphStyle: { alignment: 'CENTER' },
-            fields: 'alignment'
-        }
-    });
     _gAddLine(state, 'CRIME INVESTIGATION DIVISION', {
         bold: true, color: { red: 0.79, green: 0.64, blue: 0.15 }, fontSize: 10, align: 'CENTER', spaceBelow: 2
     });
