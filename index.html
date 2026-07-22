@@ -2606,10 +2606,22 @@ async function uploadToImgbb(file) {
     form.append('key', IMGBB_KEY);
     form.append('image', base64);
     form.append('name', file.name || 'cid_photo');
-    const res = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: form });
-    const data = await res.json();
-    if (data.success) return data.data.url;
-    throw new Error('ImgBB: ' + (data.error?.message || JSON.stringify(data)));
+
+    // ImgBB renvoie parfois une erreur ponctuelle ("Internal upload error") sans raison liée au fichier :
+    // on retente automatiquement 2 fois avant d'abandonner.
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            const res = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: form });
+            const data = await res.json();
+            if (data.success) return data.data.url;
+            lastError = new Error('ImgBB: ' + (data.error?.message || JSON.stringify(data)));
+        } catch(e) {
+            lastError = e;
+        }
+        if (attempt < 3) await new Promise(r => setTimeout(r, 800 * attempt));
+    }
+    throw lastError;
 }
 
 async function uploadFilesToImgbb(files) {
