@@ -2592,6 +2592,23 @@ async function uploadToImgbb(file) {
     if (file.size > MAX_SIZE) {
         throw new Error('Image trop lourde (max 32 Mo).');
     }
+
+    // On redessine systématiquement l'image via un canvas avant l'envoi : ça élimine les formats/
+    // encodages exotiques (HEIC, profils de couleur particuliers, PNG mal formés...) qui font parfois
+    // échouer ImgBB avec une "Internal upload error" sans rapport avec la clé API elle-même.
+    let uploadBlob = file;
+    try {
+        const bitmap = await createImageBitmap(file);
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        canvas.getContext('2d').drawImage(bitmap, 0, 0);
+        const pngBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        if (pngBlob) uploadBlob = pngBlob;
+    } catch(e) {
+        console.warn('Conversion image échouée, envoi du fichier original :', e);
+    }
+
     const base64 = await new Promise((resolve, reject) => {
         const r = new FileReader();
         r.onload = e => {
@@ -2602,7 +2619,7 @@ async function uploadToImgbb(file) {
             resolve(data);
         };
         r.onerror = () => reject(new Error("Erreur lors de la lecture du fichier."));
-        r.readAsDataURL(file);
+        r.readAsDataURL(uploadBlob);
     });
     const form = new FormData();
     form.append('key', IMGBB_KEY);
