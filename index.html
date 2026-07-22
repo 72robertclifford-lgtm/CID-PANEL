@@ -2297,6 +2297,7 @@ function showSuccessMessage(msg) {
 async function setAccountStatus(username, status) {
     try {
         await sb.updateAccount(username, { status });
+        if (status === 'rejected') clearOrgMemberPhoto(username);
         renderAdminPanel();
     } catch(e) { alert('Erreur: ' + e.message); }
 }
@@ -2305,6 +2306,7 @@ async function deleteAccount(username) {
     if (!confirm(`Supprimer le compte @${username} ?`)) return;
     try {
         await sb.deleteAccount(username);
+        clearOrgMemberPhoto(username);
         renderAdminPanel();
     } catch(e) { alert('Erreur: ' + e.message); }
 }
@@ -4821,6 +4823,17 @@ function saveOrgMembersLocal() {
     localStorage.setItem('cid_org_updated', Date.now().toString());
     // Sync to Supabase for persistence across devices/sessions
     syncOrgMembersToSupabase();
+}
+
+// Retire la photo d'un membre de l'organigramme (utilisé quand son compte est supprimé/désactivé)
+// et empêche qu'elle revienne au prochain resynchronisation depuis la table des comptes.
+function clearOrgMemberPhoto(username) {
+    const idx = orgMembers.findIndex(m => m.username === username);
+    if (idx < 0 || !orgMembers[idx].photo) return;
+    orgMembers[idx].photo = '';
+    orgMembers[idx].photoRemoved = true;
+    saveOrgMembersLocal();
+    if (typeof renderOrgChartTab === 'function') renderOrgChartTab();
 }
 
 async function renderOrgChart() {
