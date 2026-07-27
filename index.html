@@ -1259,6 +1259,7 @@
                     <div class="nav-dropdown-item" data-tab="mandat" onclick="selectDossiersMenu('mandat')">📜 Mandat</div>
                     <div class="nav-dropdown-item" data-tab="injonction" onclick="selectDossiersMenu('injonction')">🏠 Injonction</div>
                     <div class="nav-dropdown-item" data-tab="bilan" onclick="selectDossiersMenu('bilan')">📊 Bilan</div>
+                    <div class="nav-dropdown-item" data-tab="telephonique" onclick="selectDossiersMenu('telephonique')">📱 Téléphonique</div>
                 </div>
             </div>
             <button class="nav-tab" id="tabCarte" onclick="switchMainTab('carte')" style="display:none;">
@@ -1508,6 +1509,11 @@
         <div class="tab-content" id="tabContentBilan">
             <div id="mainBilanContent"></div>
         </div>
+
+        <!-- TAB: MANDAT DE PERQUISITION TELEPHONIQUE -->
+        <div class="tab-content" id="tabContentTelephonique">
+            <div id="mainTelephoniqueContent"></div>
+        </div>
     </div>
 </div>
 
@@ -1682,6 +1688,7 @@
             <option value="mandat">📜 Page Mandat</option>
             <option value="injonction">🏠 Page Injonction</option>
             <option value="bilan">📊 Page Bilan</option>
+            <option value="telephonique">📱 Page Téléphonique</option>
         </select></div>
         <div id="docUrlField" style="margin-bottom:12px;"><label style="font-size:12px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">URL *</label>
         <input type="text" id="docUrl" placeholder="https://..." style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--input-bg);color:var(--text);"></div>
@@ -2039,6 +2046,15 @@ _modulePollers.bilan = createRealtimePoller('bilan', {
     getCurrentId: () => currentBilanId,
     renderListFn: renderBilansList,
     renderEditorFn: renderBilanEditor
+});
+_modulePollers.telephonique = createRealtimePoller('telephonique', {
+    supabaseKey: 'cid_telephoniques',
+    localStorageKey: 'cid_telephoniques',
+    getList: () => cidTelephoniques,
+    containerId: 'mainTelephoniqueContent',
+    getCurrentId: () => currentTelephoniqueId,
+    renderListFn: renderTelephoniquesList,
+    renderEditorFn: renderTelephoniqueEditor
 });
 _modulePollers.rapport = createRealtimePoller('rapport', {
     supabaseKey: 'cid_rapports',
@@ -3126,6 +3142,7 @@ window.addEventListener('load', async () => {
     const linkMandatId = params.get('mandat');
     const linkInjonctionId = params.get('injonction');
     const linkBilanId = params.get('bilan');
+    const linkTelephoniqueId = params.get('telephonique');
     if(linkRapportId){
         localStorage.setItem('cid_pending_link', JSON.stringify({ rapportId: linkRapportId }));
         window.history.replaceState({}, '', window.location.pathname);
@@ -3137,6 +3154,9 @@ window.addEventListener('load', async () => {
         window.history.replaceState({}, '', window.location.pathname);
     } else if(linkBilanId){
         localStorage.setItem('cid_pending_link', JSON.stringify({ bilanId: linkBilanId }));
+        window.history.replaceState({}, '', window.location.pathname);
+    } else if(linkTelephoniqueId){
+        localStorage.setItem('cid_pending_link', JSON.stringify({ telephoniqueId: linkTelephoniqueId }));
         window.history.replaceState({}, '', window.location.pathname);
     } else if(linkInterroId){
         localStorage.setItem('cid_pending_link', JSON.stringify({ interroId: linkInterroId }));
@@ -3230,6 +3250,20 @@ window.addEventListener('load', async () => {
                                 switchMainTab('bilan');
                                 setTimeout(() => openBilan(data.bilanId), 300);
                             } catch(e) { switchMainTab('bilan'); }
+                        }, 400);
+                        return;
+                    }
+
+                    // Lien vers un mandat de perquisition téléphonique
+                    if (data.telephoniqueId) {
+                        setTimeout(async () => {
+                            try {
+                                await loadOrgMembersFromSupabase();
+                                grantTelephoniqueLinkAccess(data.telephoniqueId);
+                                await loadCidTelephoniques();
+                                switchMainTab('telephonique');
+                                setTimeout(() => openTelephonique(data.telephoniqueId), 300);
+                            } catch(e) { switchMainTab('telephonique'); }
                         }, 400);
                         return;
                     }
@@ -4512,6 +4546,20 @@ async function checkPendingLink() {
         return;
     }
 
+    // Lien vers un mandat de perquisition téléphonique — lecture pour tous, écriture pour les officiers assignés
+    if (data.telephoniqueId) {
+        setTimeout(async () => {
+            try {
+                await loadOrgMembersFromSupabase();
+                grantTelephoniqueLinkAccess(data.telephoniqueId);
+                await loadCidTelephoniques();
+                switchMainTab('telephonique');
+                setTimeout(() => openTelephonique(data.telephoniqueId), 300);
+            } catch(e) { switchMainTab('telephonique'); }
+        }, 400);
+        return;
+    }
+
     // Lien vers un interrogatoire — accès libre pour tous si on a le lien
     if (data.interroId) {
         await loadCidDepositions();
@@ -5295,7 +5343,7 @@ function switchMainTab(tab) {
     stopAllModulePollers();
 
     const tabIdMap = { dossiers:'tabDossiers', carte:'tabCarte', orgchart:'tabOrgChart', documents:'tabDocuments', deposition:'tabDeposition', rapport:'tabRapport' };
-    const contentIdMap = { dossiers:'tabContentDossiers', carte:'tabContentCarte', orgchart:'tabContentOrgChart', documents:'tabContentDocuments', deposition:'tabContentDeposition', rapport:'tabContentRapport', mandat:'tabContentMandat', injonction:'tabContentInjonction', bilan:'tabContentBilan' };
+    const contentIdMap = { dossiers:'tabContentDossiers', carte:'tabContentCarte', orgchart:'tabContentOrgChart', documents:'tabContentDocuments', deposition:'tabContentDeposition', rapport:'tabContentRapport', mandat:'tabContentMandat', injonction:'tabContentInjonction', bilan:'tabContentBilan', telephonique:'tabContentTelephonique' };
     Object.entries(tabIdMap).forEach(([k,id]) => {
         const el = document.getElementById(id);
         if (el) el.classList.toggle('active', k === tab);
@@ -5306,11 +5354,11 @@ function switchMainTab(tab) {
     });
 
     // --- Dropdown Dossiers/Interrogatoire : le déclencheur reste actif pour les deux ---
-    const inDossiersGroup = (tab === 'dossiers' || tab === 'deposition' || tab === 'rapport' || tab === 'mandat' || tab === 'injonction' || tab === 'bilan');
+    const inDossiersGroup = (tab === 'dossiers' || tab === 'deposition' || tab === 'rapport' || tab === 'mandat' || tab === 'injonction' || tab === 'bilan' || tab === 'telephonique');
     const dossiersBtn = document.getElementById('tabDossiers');
     if (dossiersBtn) dossiersBtn.classList.toggle('active', inDossiersGroup);
     const dossiersLabel = document.getElementById('dossiersTabLabel');
-    if (dossiersLabel && inDossiersGroup) dossiersLabel.textContent = tab === 'deposition' ? '📄 Interrogatoire' : tab === 'rapport' ? '📋 Rapport' : tab === 'mandat' ? '📜 Mandat' : tab === 'injonction' ? '🏠 Injonction' : tab === 'bilan' ? '📊 Bilan' : '📁 Dossiers';
+    if (dossiersLabel && inDossiersGroup) dossiersLabel.textContent = tab === 'deposition' ? '📄 Interrogatoire' : tab === 'rapport' ? '📋 Rapport' : tab === 'mandat' ? '📜 Mandat' : tab === 'injonction' ? '🏠 Injonction' : tab === 'bilan' ? '📊 Bilan' : tab === 'telephonique' ? '📱 Téléphonique' : '📁 Dossiers';
     document.querySelectorAll('#dossiersDropdownMenu .nav-dropdown-item').forEach(it => {
         it.classList.toggle('active', it.dataset.tab === tab);
     });
@@ -5324,6 +5372,7 @@ function switchMainTab(tab) {
     if (tab === 'mandat') { renderMainMandatTab(); _modulePollers.mandat.start(); }
     if (tab === 'injonction') { renderMainInjonctionTab(); _modulePollers.injonction.start(); }
     if (tab === 'bilan') { renderMainBilanTab(); _modulePollers.bilan.start(); }
+    if (tab === 'telephonique') { renderMainTelephoniqueTab(); _modulePollers.telephonique && _modulePollers.telephonique.start(); }
     if (tab === 'carte') { initCarte(); setTimeout(() => { if(_carteMap) { _carteMap.invalidateSize(true); } }, 300); }
     // Onglet Carte : la page prend toute la largeur de l'écran pour un affichage plus grand
     const dossiersContainer = document.getElementById('dossiersPageContainer');
@@ -5692,6 +5741,9 @@ function openDocLink(type, id) {
     } else if (type === 'bilan') {
         if (id === 'internal') { switchMainTab('bilan'); return; }
         loadCidBilans().then(() => { switchMainTab('bilan'); setTimeout(() => openBilan(id), 300); });
+    } else if (type === 'telephonique') {
+        if (id === 'internal') { switchMainTab('telephonique'); return; }
+        loadCidTelephoniques().then(() => { switchMainTab('telephonique'); setTimeout(() => openTelephonique(id), 300); });
     }
 }
 
@@ -5701,7 +5753,8 @@ const DOC_TYPE_DEFAULTS = {
     rapport:       { category: "Procédures d'Enquête",       icon: '📋' },
     mandat:        { category: 'Perquisitions Immobilières', icon: '📜' },
     injonction:    { category: 'Perquisitions Immobilières', icon: '🏠' },
-    bilan:         { category: 'Perquisitions Immobilières', icon: '📊' }
+    bilan:         { category: 'Perquisitions Immobilières', icon: '📊' },
+    telephonique:  { category: 'Perquisitions Téléphoniques', icon: '📱' }
 };
 
 function toggleDocLinkType() {
@@ -5774,6 +5827,8 @@ function renderDocumentsTab() {
                     _onclick = "openDocLink('injonction','internal')";
                 } else if (doc.linkType === 'bilan') {
                     _onclick = "openDocLink('bilan','internal')";
+                } else if (doc.linkType === 'telephonique') {
+                    _onclick = "openDocLink('telephonique','internal')";
                 } else {
                     try {
                         const _u = new URL(doc.url, window.location.href);
@@ -5782,11 +5837,13 @@ function renderDocumentsTab() {
                         const _mid = _u.searchParams.get('mandat');
                         const _jid = _u.searchParams.get('injonction');
                         const _bid = _u.searchParams.get('bilan');
+                        const _tid = _u.searchParams.get('telephonique');
                         if (_iid) _onclick = "openDocLink('interro','" + _iid + "')";
                         else if (_rid) _onclick = "openDocLink('rapport','" + _rid + "')";
                         else if (_mid) _onclick = "openDocLink('mandat','" + _mid + "')";
                         else if (_jid) _onclick = "openDocLink('injonction','" + _jid + "')";
                         else if (_bid) _onclick = "openDocLink('bilan','" + _bid + "')";
+                        else if (_tid) _onclick = "openDocLink('telephonique','" + _tid + "')";
                         else _onclick = "window.open('" + doc.url.replace(/'/g,"\'") + "','_blank')";
                     } catch(e) { _onclick = "window.open('" + doc.url + "','_blank')"; }
                 }
@@ -10634,6 +10691,719 @@ async function confirmBilanModal() {
     </div>`;
     document.body.appendChild(el.firstElementChild);
     document.getElementById('bilanNameModalInput').addEventListener('keydown', e => { if(e.key==='Enter') confirmBilanModal(); });
+})();
+
+
+
+
+// ==================== MANDATS DE PERQUISITION TELEPHONIQUE (liste + éditeur) ====================
+let cidTelephoniques = [];
+let currentTelephoniqueId = null;
+let cidTelephoniquesLoaded = false;
+
+function blankTelephoniqueForm() {
+    return {
+        lieu: 'Office de Vespucci',
+        date: new Date().toLocaleDateString('fr-FR'),
+        officiers: [],
+        rows: [
+            { nom: '', prenom: '', telephone: '555-' }
+        ],
+        entries: []
+    };
+}
+
+async function loadCidTelephoniques() {
+    try {
+        const rows = await sbFetch('org_settings?key=eq.cid_telephoniques&select=value');
+        if (rows && rows[0]) {
+            cidTelephoniques = JSON.parse(rows[0].value || '[]');
+            cidTelephoniquesLoaded = true;
+            localStorage.setItem('cid_telephoniques', JSON.stringify(cidTelephoniques));
+            return;
+        }
+    } catch(e) {}
+    try { cidTelephoniques = JSON.parse(localStorage.getItem('cid_telephoniques') || '[]'); } catch(e) { cidTelephoniques = []; }
+    cidTelephoniquesLoaded = true;
+}
+
+async function saveCidTelephoniques() {
+    localStorage.setItem('cid_telephoniques', JSON.stringify(cidTelephoniques));
+    try {
+        await sbUpsertSetting('cid_telephoniques', JSON.stringify(cidTelephoniques));
+    } catch(e) {}
+}
+
+let _telephoniqueAccess = {};
+function _loadTelephoniqueAccess() {
+    try { _telephoniqueAccess = JSON.parse(localStorage.getItem('cid_telephonique_access') || '{}'); } catch(e) { _telephoniqueAccess = {}; }
+}
+function _saveTelephoniqueAccess() {
+    try { localStorage.setItem('cid_telephonique_access', JSON.stringify(_telephoniqueAccess)); } catch(e) {}
+}
+function grantTelephoniqueLinkAccess(id) {
+    _loadTelephoniqueAccess();
+    _telephoniqueAccess[id] = ['_open_'];
+    _saveTelephoniqueAccess();
+}
+function canViewTelephonique(id) {
+    if (getPermLevel() !== 'procureur') return true;
+    // Procureur : accès uniquement si le lien lui a été donné explicitement
+    if (!Object.keys(_telephoniqueAccess).length) _loadTelephoniqueAccess();
+    return (_telephoniqueAccess[id] || []).length > 0;
+}
+
+// ---- Permission d'écriture : réservée aux officiers assignés sur CE telephonique (+ Master Investigator/Commanding toujours) ----
+function canEditTelephonique(id) {
+    const m = cidTelephoniques.find(x => x.id === id);
+    if (!m || !m.form || !m.form.officiers || !currentUser) return false;
+    return m.form.officiers.some(o => o && o.username && o.username === currentUser.username);
+}
+function telephoniqueCanWrite() {
+    return canEditTelephonique(currentTelephoniqueId);
+}
+
+// ---- Entrée principale ----
+async function renderMainTelephoniqueTab() {
+    const container = document.getElementById('mainTelephoniqueContent');
+    if (!container) return;
+    if (!cidTelephoniquesLoaded) {
+        container.innerHTML = '<div style="text-align:center;padding:30px;color:#C9A227">⏳ Chargement...</div>';
+        await loadCidTelephoniques();
+    }
+    if (currentTelephoniqueId) renderTelephoniqueEditor(container);
+    else renderTelephoniquesList(container);
+}
+
+// ---- Vue liste ----
+function renderTelephoniquesList(container) {
+    const canCreate = getPermLevel() !== 'procureur';
+    _listSearchRerender.telephonique = () => renderTelephoniquesList(container);
+
+    let html = `
+    <div style="margin-bottom:18px;">
+        <h2 style="color:#C9A227;font-size:20px;font-weight:900;margin:0 0 4px;">📱 Mandats de perquisition téléphonique</h2>
+        <p style="color:var(--text3);font-size:13px;margin:0;">Demandes de mandat de perquisition téléphonique de la Criminal Investigation Division · Écriture réservée aux agents en charge · Procureurs : accès uniquement via lien</p>
+    </div>`;
+
+    if (canCreate) html += `<button class="btn-new-dossier" onclick="createTelephonique()">+ Créer un nouveau mandat téléphonique</button>`;
+    html += _searchBarHtml('telephonique', '🔍 Rechercher par nom, mois (ex: Juillet 2026), agent...');
+
+    const allVisible = cidTelephoniques.filter(m => canViewTelephonique(m.id));
+    const visible = allVisible.filter(m => _matchesSearch('telephonique', m.name, m.modified_at, _officiersToTexts(m.form && m.form.officiers)));
+
+    if (visible.length === 0) {
+        html += `<div class="empty-state"><h2>${allVisible.length ? 'Aucun résultat' : 'Aucun mandat téléphonique'}</h2><p>${allVisible.length ? 'Essayez une autre recherche' : (canCreate ? 'Créez un nouveau mandat téléphonique pour commencer' : 'Aucun mandat téléphonique disponible')}</p></div>`;
+        container.innerHTML = html;
+        return;
+    }
+
+    html += renderGroupedByMonth(visible, m => m.modified_at, m => {
+        const canWrite = canEditTelephonique(m.id);
+        return `
+        <div class="dossier-card">
+            <div class="dossier-card-top">
+                <div class="dossier-card-icon">📱</div>
+                <div class="dossier-card-info">
+                    <h3>${rapEsc(m.name)}</h3>
+                    <div class="dossier-card-meta">
+                        <span>@${rapEsc(m.username)||'—'}</span>
+                        <span>${rapEsc(m.modified_at)}</span>
+                        ${canWrite ? '' : '<span title="Lecture seule — vous n\'êtes pas assigné">🔒</span>'}
+                    </div>
+                </div>
+            </div>
+            <div class="dossier-card-actions">
+                <button class="dcard-btn dcard-btn-open" onclick="openTelephonique('${m.id}')">📱 Ouvrir le mandat</button>
+                <div class="dossier-card-actions-row">
+                    <button class="dcard-btn" onclick="copyTelephoniqueLink('${m.id}')" style="background:rgba(123,45,139,0.12);color:#7B2D8B;border:1px solid rgba(123,45,139,0.3);">🔗 Copier le lien</button>
+                    ${canWrite ? `<button class="dcard-btn dcard-btn-rename" onclick="renameTelephonique('${m.id}')">✏️ Renommer</button>` : ''}
+                    ${canDeleteDossier() ? `<button class="dcard-btn dcard-btn-del" onclick="deleteTelephonique('${m.id}')">🗑 Suppr.</button>` : ''}
+                </div>
+            </div>
+        </div>`;
+    }, 'telephonique');
+
+    container.innerHTML = html;
+}
+
+// ---- Actions cartes ----
+async function createTelephonique() { openTelephoniqueModal('create'); }
+async function _doCreateTelephonique(name) {
+    const now = new Date().toLocaleDateString('fr-FR');
+    const form = blankTelephoniqueForm();
+    // Le créateur est automatiquement assigné comme officier en charge (sinon il serait bloqué en lecture seule)
+    if (currentUser) {
+        const label = `${currentUser.grade||''} | ${currentUser.firstName||''} ${currentUser.lastName||''}`.trim();
+        form.officiers.push({ username: currentUser.username, label });
+    }
+    cidTelephoniques.unshift({ id: Date.now().toString(), name: name.trim(), username: currentUser?currentUser.username:'', created_at: now, modified_at: now, form });
+    await saveCidTelephoniques();
+    renderMainTelephoniqueTab();
+}
+
+function openTelephonique(id) {
+    currentTelephoniqueId = id;
+    renderMainTelephoniqueTab();
+    setTimeout(() => {
+        document.querySelectorAll('#mainTelephoniqueContent textarea').forEach(ta => telephoniqueAutoGrow(ta));
+    }, 100);
+}
+function closeTelephonique() { saveCidTelephoniques(); currentTelephoniqueId = null; renderMainTelephoniqueTab(); }
+
+async function renameTelephonique(id) {
+    const m = cidTelephoniques.find(x => x.id === id);
+    if (!m) return;
+    openTelephoniqueModal('rename', id, m.name);
+}
+async function _doRenameTelephonique(id, name) {
+    const m = cidTelephoniques.find(x => x.id === id);
+    if (!m) return;
+    m.name = name.trim();
+    m.modified_at = new Date().toLocaleDateString('fr-FR');
+    await saveCidTelephoniques();
+    renderMainTelephoniqueTab();
+}
+
+async function deleteTelephonique(id) {
+    if (!confirm('Supprimer ce mandat téléphonique ? Action irréversible.')) return;
+    const i = cidTelephoniques.findIndex(x => x.id === id);
+    if (i >= 0) cidTelephoniques.splice(i, 1);
+    if (currentTelephoniqueId === id) currentTelephoniqueId = null;
+    await saveCidTelephoniques();
+    renderMainTelephoniqueTab();
+}
+
+function copyTelephoniqueLink(id) {
+    const base = getShareBaseUrl();
+    const m = cidTelephoniques.find(x => x.id === id);
+    const nomSlug = m ? m.name.replace(/[^a-zA-Z0-9À-ÿ\s-]/g,'').trim().replace(/\s+/g,'-').substring(0,50) : '';
+    const link = `${base}?telephonique=${id}${nomSlug ? '&nom='+encodeURIComponent(nomSlug) : ''}`;
+    navigator.clipboard.writeText(link).then(() => {
+        showSuccessDossiers("🔗 Lien du mandat copié ! Toute personne connectée pourra le consulter (lecture seule sauf agents assignés).");
+    }).catch(() => prompt('Copie ce lien :', link));
+    if (m) {
+        const owner = m.username ? `@${m.username}` : '';
+        updateOgMeta(`${m.name} — CID`, `📱 Mandat de perquisition téléphonique${owner ? ' • '+owner : ''} · Crime Investigation Division · Cliquez pour consulter`);
+    }
+}
+
+async function exportTelephoniqueToGoogleDocs(id) {
+    const m = cidTelephoniques.find(x => x.id === id);
+    if (!m || !m.form) return;
+    const f = m.form;
+    await exportToGoogleDocs(m.name, (state) => {
+        _gAddTitleBlock(state, 'DEMANDE DE MANDAT DE PERQUISITION TÉLÉPHONIQUE');
+        _gAddSpacer(state);
+        _gAddLine(state, `Fait à ${f.lieu || ''}, le ${f.date || ''}.`, { italic: true });
+        _gAddSpacer(state);
+        _gAddLine(state, "Dans le cadre d'une enquête de la Crime Investigation Division, nous vous adressons souhaiterions obtenir un mandat de perquisition téléphonique.");
+        _gAddSectionTitle(state, 'Propriétaire(s)');
+        (f.rows || []).forEach((r, i) => {
+            _gAddLine(state, `${i + 1}. Nom : ${r.nom || '—'}   |   Prénom : ${r.prenom || '—'}   |   Téléphone : ${r.telephone || '—'}`);
+        });
+        _gAddSectionTitle(state, 'Preuves (liens, photos, dépositions)');
+        _gAddEntries(state, f.entries, 'Aucune preuve renseignée.');
+        _gAddSignatures(state, f.officiers);
+    });
+}
+
+// ---- Helpers données du telephonique actuellement ouvert ----
+function telephoniqueForm() {
+    const m = cidTelephoniques.find(x => x.id === currentTelephoniqueId);
+    return m ? m.form : null;
+}
+let _telephoniqueSaveDebounceTimer = null;
+function telephoniqueSaveData() {
+    const m = cidTelephoniques.find(x => x.id === currentTelephoniqueId);
+    if (m) m.modified_at = new Date().toLocaleDateString('fr-FR');
+    clearTimeout(_telephoniqueSaveDebounceTimer);
+    _telephoniqueSaveDebounceTimer = setTimeout(() => { saveCidTelephoniques(); }, 700);
+}
+
+// ---- Éditeur (une page façon document officiel) ----
+function renderTelephoniqueEditor(container) {
+    const m = cidTelephoniques.find(x => x.id === currentTelephoniqueId);
+    if (!m) { currentTelephoniqueId = null; renderTelephoniquesList(container); return; }
+    const f = m.form || (m.form = blankTelephoniqueForm());
+    if (!f.rows || !f.rows.length) f.rows = [{ nom:'', prenom:'', telephone:'555-' }];
+    if (typeof f.lieu !== 'string') f.lieu = 'Office de Vespucci';
+    if (!f.entries) f.entries = [];
+    if (!f.officiers) f.officiers = [];
+    // Migration : ancien format (string) -> objet {username, label}
+    f.officiers = f.officiers.map(o => typeof o === 'string' ? { username: null, label: o } : o).filter(o => o && o.label);
+    const canWrite = canEditTelephonique(m.id);
+    const id = m.id;
+
+    container.innerHTML = `
+    <div class="dossier-toolbar" style="margin-bottom:18px;">
+        <button class="btn-toolbar btn-back" onclick="closeTelephonique()">← Retour</button>
+        <span style="font-size:15px;font-weight:700;color:#C9A227;flex:1;">${rapEsc(m.name)}</span>
+        <button class="btn-toolbar" onclick="copyTelephoniqueLink('${id}')" style="background:rgba(123,45,139,0.15);color:#d9a8f0;border:1px solid rgba(123,45,139,0.4);">🔗 Copier le lien</button>
+        <button class="btn-toolbar" onclick="exportTelephoniqueToGoogleDocs('${id}')" style="background:rgba(15,157,88,0.15);color:#5fd68f;border:1px solid rgba(15,157,88,0.4);">📤 Exporter vers Google Docs</button>
+        ${canWrite ? `<button class="btn-toolbar" onclick="renameTelephonique('${id}')" style="background:rgba(201,162,39,0.15);color:#C9A227;border:1px solid rgba(201,162,39,0.3);">✏️ Renommer</button>` : ''}
+    </div>
+    ${!canWrite ? `<div style="max-width:740px;margin:0 auto 16px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.35);color:#e0b830;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;">🔒 Lecture seule — seuls les officiers assignés à ce mandat téléphonique peuvent le modifier.</div>` : ''}
+
+    <div class="mandat-wrap" style="padding-top:0;">
+        <div class="mandat-doc" contenteditable="false">
+            <div class="m-page">
+                <div class="m-header">
+                    <div class="m-eyebrow">— Crime Investigation Division —</div>
+                    <h1 class="m-title">📱 DEMANDE DE MANDAT DE PERQUISITION TÉLÉPHONIQUE</h1>
+                    <div class="m-subtitle">Criminal Investigation Division</div>
+                </div>
+                <div class="m-page-inner" style="padding-top:24px;">
+
+                    <div class="m-section-box">
+                        <div class="m-section-header"><span class="m-sh-icon">🏛️</span> Informations générales</div>
+                        <div class="m-fields">
+                            <div class="m-field-row">
+                                <div class="m-field">
+                                    <b>Fait à</b>
+                                    <input type="text" class="m-input" placeholder="Ex: Office de Vespucci" value="${rapEsc(f.lieu)}" oninput="telephoniqueField('lieu',this.value)" ${canWrite?'':'readonly'}>
+                                </div>
+                                <div class="m-field">
+                                    <b>Le</b>
+                                    <input type="text" class="m-input" value="${rapEsc(f.date)}" oninput="telephoniqueField('date',this.value)" ${canWrite?'':'readonly'}>
+                                </div>
+                            </div>
+                            <div class="m-field" style="display:block;">
+                                <b>Officiers demandeurs</b>
+                                <div id="telephoniqueOfficiersChips" style="display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 10px;"></div>
+                                <div id="telephoniqueOfficiersAddWrap" style="position:relative;display:${canWrite ? '' : 'none'};">
+                                    <button type="button" onclick="telephoniqueToggleOfficiersDropdown()" style="width:100%;padding:10px 14px;border:1px solid rgba(201,162,39,0.3);border-radius:10px;font-size:13px;font-weight:700;background:rgba(13,43,94,0.15);color:#C9A227;text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-family:Georgia,serif;">
+                                        <span style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">👤</span> Sélectionner des agents...</span>
+                                        <span id="telephoniqueOfficiersArrow" style="font-size:12px;transition:transform 0.2s;">▾</span>
+                                    </button>
+                                    <div id="telephoniqueOfficiersDropdown" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:#f7f7f7;border:1px solid rgba(201,162,39,0.3);border-radius:12px;max-height:280px;overflow-y:auto;z-index:200;box-shadow:0 12px 32px rgba(0,0,0,0.3);padding:8px;">
+                                        <div style="padding:8px 10px 10px;border-bottom:1px solid rgba(201,162,39,0.15);margin-bottom:6px;">
+                                            <input type="text" id="telephoniqueOfficiersSearch" placeholder="🔍 Rechercher..." oninput="telephoniqueFilterOfficiersDropdown(this.value)" style="width:100%;padding:7px 10px;border:1px solid #ccc;border-radius:7px;font-size:13px;background:#fff;color:#111;box-sizing:border-box;font-family:Georgia,serif;">
+                                        </div>
+                                        <div id="telephoniqueOfficiersList"></div>
+                                        <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(201,162,39,0.15);">
+                                            <input type="text" id="telephoniqueOfficiersCustomInput" placeholder="@pseudo (hors liste)" onkeydown="if(event.key==='Enter'){event.preventDefault();telephoniqueAddCustomOfficier();}" style="flex:1;padding:6px 9px;border:1px solid #ccc;border-radius:6px;font-size:12px;font-family:Georgia,serif;">
+                                            <button type="button" onclick="telephoniqueAddCustomOfficier()" style="background:#555;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:700;">+</button>
+                                        </div>
+                                    </div>
+                                    <button type="button" onclick="telephoniqueConfirmOfficiers()" style="width:100%;margin-top:8px;padding:10px;background:linear-gradient(135deg,#C9A227,#e0b830);color:#0D2B5E;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:900;letter-spacing:0.3px;box-shadow:0 3px 10px rgba(201,162,39,0.25);font-family:Georgia,serif;">✅ Confirmer la sélection</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="font-family:Georgia,serif;font-size:14.5px;line-height:1.7;color:#2b2b2b;padding:0 2px 16px;">
+                        <p style="margin:0 0 14px;">Dans le cadre d'une enquête de la Crime Investigation Division, nous vous adressons souhaiterions obtenir un mandat de perquisition téléphonique.</p>
+                    </div>
+
+                    <div class="m-section-box">
+                        <div class="m-section-header"><span class="m-sh-icon">📱</span> Propriétaire(s)</div>
+                        <div style="padding:14px 16px 18px;">
+                            <div style="overflow-x:auto;">
+                                <table style="width:100%;border-collapse:collapse;font-family:Georgia,serif;font-size:13.5px;">
+                                    <thead>
+                                        <tr>
+                                            <th style="background:rgba(13,43,94,0.9);color:#C9A227;text-align:left;padding:9px 12px;border:1px solid rgba(201,162,39,0.25);font-size:11px;letter-spacing:0.8px;text-transform:uppercase;">Nom</th>
+                                            <th style="background:rgba(13,43,94,0.9);color:#C9A227;text-align:left;padding:9px 12px;border:1px solid rgba(201,162,39,0.25);font-size:11px;letter-spacing:0.8px;text-transform:uppercase;">Prénom</th>
+                                            <th style="background:rgba(13,43,94,0.9);color:#C9A227;text-align:left;padding:9px 12px;border:1px solid rgba(201,162,39,0.25);font-size:11px;letter-spacing:0.8px;text-transform:uppercase;">Numéro de téléphone</th>
+                                            <th style="background:rgba(13,43,94,0.9);width:1%;border:1px solid rgba(201,162,39,0.25);"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="telephoniqueRowsList"></tbody>
+                                </table>
+                            </div>
+                            ${canWrite ? `<button type="button" class="m-mini-add" style="margin-top:10px;" onclick="telephoniqueAddRow()">+ Ajouter une ligne</button>` : ''}
+                        </div>
+                    </div>
+
+                    <div class="m-section-box">
+                        <div class="m-section-header"><span class="m-sh-icon">📎</span> Preuves (Liens, photos, dépositions)</div>
+                        <div style="padding:14px 16px 18px;background:rgba(210,150,190,0.08);">
+                            <div class="m-timeline" id="telephoniqueEntriesList"></div>
+                            ${canWrite ? `<button class="m-add-entry-btn" onclick="telephoniqueAddEntry()">+ Ajouter une preuve (texte + image)</button>` : ''}
+                        </div>
+                    </div>
+
+                    <div style="font-family:Georgia,serif;font-size:14.5px;line-height:1.7;color:#2b2b2b;padding:8px 2px 0;">
+                        <p style="margin:0;">En vous présentant mes salutations distinguées,</p>
+                    </div>
+
+                    <div id="telephoniqueSignaturesWrap" class="m-signatures-wrap"></div>
+                    <div class="m-page-footer">Demande de mandat de perquisition téléphonique — CID Confidentiel</div>
+                </div>
+            </div>
+        </div>
+    </div>`;
+
+    telephoniqueRenderEntries();
+    telephoniqueRenderOfficiers();
+    telephoniqueRenderRows();
+}
+
+function telephoniqueField(key, value) {
+    if (!telephoniqueCanWrite()) return;
+    const f = telephoniqueForm();
+    if (!f) return;
+    f[key] = value;
+    telephoniqueSaveData();
+}
+
+function telephoniqueAutoGrow(el) {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+}
+
+// ---- Pastille déroulante "numéro de propriété" / "nom du propriétaire" ----
+// ---- Lignes du tableau des propriétaires (liste dynamique illimitée) ----
+function telephoniqueRenderRows() {
+    const container = document.getElementById('telephoniqueRowsList');
+    const f = telephoniqueForm();
+    if (!container || !f) return;
+    if (!f.rows || !f.rows.length) f.rows = [{ nom:'', prenom:'', telephone:'555-' }];
+    const canWrite = telephoniqueCanWrite();
+    const cellStyle = 'padding:0;border:1px solid rgba(201,162,39,0.2);';
+    const inputStyle = 'width:100%;box-sizing:border-box;border:none;background:transparent;font-family:inherit;font-size:13.5px;padding:9px 12px;outline:none;color:#222;';
+    container.innerHTML = f.rows.map((row, i) => `
+        <tr>
+            <td style="${cellStyle}"><input type="text" style="${inputStyle}" value="${rapEsc(row.nom)}" placeholder="Nom" oninput="telephoniqueRowField(${i},'nom',this.value)" ${canWrite?'':'readonly'}></td>
+            <td style="${cellStyle}"><input type="text" style="${inputStyle}" value="${rapEsc(row.prenom)}" placeholder="Prénom" oninput="telephoniqueRowField(${i},'prenom',this.value)" ${canWrite?'':'readonly'}></td>
+            <td style="${cellStyle}"><input type="text" style="${inputStyle}" value="${rapEsc(row.telephone)}" placeholder="555-" oninput="telephoniqueRowField(${i},'telephone',this.value)" ${canWrite?'':'readonly'}></td>
+            <td style="${cellStyle}text-align:center;">${(canWrite && f.rows.length > 1) ? `<button type="button" class="m-fait-del" onclick="telephoniqueDelRow(${i})" title="Supprimer">✕</button>` : ''}</td>
+        </tr>
+    `).join('');
+}
+
+function telephoniqueAddRow() {
+    if (!telephoniqueCanWrite()) return;
+    const f = telephoniqueForm();
+    if (!f) return;
+    if (!f.rows) f.rows = [];
+    f.rows.push({ nom:'', prenom:'', telephone:'555-' });
+    telephoniqueSaveData();
+    telephoniqueRenderRows();
+}
+
+function telephoniqueRowField(i, field, value) {
+    if (!telephoniqueCanWrite()) return;
+    const f = telephoniqueForm();
+    if (!f || !f.rows[i]) return;
+    f.rows[i][field] = value;
+    telephoniqueSaveData();
+}
+
+function telephoniqueDelRow(i) {
+    if (!telephoniqueCanWrite()) return;
+    const f = telephoniqueForm();
+    if (!f) return;
+    f.rows.splice(i, 1);
+    if (!f.rows.length) f.rows = [{ nom:'', prenom:'', telephone:'555-' }];
+    telephoniqueSaveData();
+    telephoniqueRenderRows();
+}
+
+function telephoniqueRenderEntries() {
+    const container = document.getElementById('telephoniqueEntriesList');
+    const f = telephoniqueForm();
+    if (!container || !f) return;
+    if (!f.entries) f.entries = [];
+    const canWrite = telephoniqueCanWrite();
+    container.innerHTML = f.entries.map((entry, i) => `
+        <div class="m-entry-item">
+            <div class="m-entry-top">
+                <span class="m-pin">📌</span>
+                <input type="text" class="m-entry-date" value="${rapEsc(entry.date)}" oninput="telephoniqueEntryDateField(${i},this.value)" title="Cliquez pour modifier la date" ${canWrite?'':'readonly'}>
+                <input type="text" class="m-entry-text" value="${rapEsc(entry.text)}" placeholder="Description de l'information..." oninput="telephoniqueEntryField(${i},this.value)" ${canWrite?'':'readonly'}>
+                ${canWrite ? `<button class="m-entry-del" onclick="telephoniqueDelEntry(${i})" title="Supprimer">✕</button>` : ''}
+            </div>
+            ${canWrite ? `
+            <div class="m-entry-dropzone" ondrop="telephoniqueDropPhoto(${i},event)" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" onclick="this.querySelector('input').click()">
+                📸 Glissez une image ici ou cliquez
+                <input type="file" class="file-input" accept="image/*" multiple style="display:none;" onchange="telephoniqueAddPhoto(${i},this)">
+            </div>` : ''}
+            ${(entry.photos||[]).length ? `
+            <div class="m-entry-photos">
+                ${(entry.photos||[]).map((ph, pi) => `
+                <div class="m-entry-photo">
+                    <img src="${ph}" onclick="openPhoto('${ph}')">
+                    ${canWrite ? `<button onclick="telephoniqueDelPhoto(${i},${pi})">✕</button>` : ''}
+                </div>`).join('')}
+            </div>` : ''}
+        </div>
+    `).join('');
+}
+
+function telephoniqueAddEntry() {
+    if (!telephoniqueCanWrite()) return;
+    const f = telephoniqueForm();
+    if (!f) return;
+    if (!f.entries) f.entries = [];
+    f.entries.push({ date: new Date().toLocaleDateString('fr-FR'), text: '', photos: [] });
+    telephoniqueSaveData();
+    telephoniqueRenderEntries();
+}
+
+function telephoniqueDelEntry(i) {
+    if (!telephoniqueCanWrite()) return;
+    const f = telephoniqueForm();
+    if (!f) return;
+    f.entries.splice(i, 1);
+    telephoniqueSaveData();
+    telephoniqueRenderEntries();
+}
+
+function telephoniqueEntryField(i, value) {
+    if (!telephoniqueCanWrite()) return;
+    const f = telephoniqueForm();
+    if (!f || !f.entries[i]) return;
+    f.entries[i].text = value;
+    telephoniqueSaveData();
+}
+
+function telephoniqueEntryDateField(i, value) {
+    if (!telephoniqueCanWrite()) return;
+    const f = telephoniqueForm();
+    if (!f || !f.entries[i]) return;
+    f.entries[i].date = value;
+    telephoniqueSaveData();
+}
+
+async function telephoniqueAddPhoto(i, input) {
+    if (!telephoniqueCanWrite()) return;
+    const f = telephoniqueForm();
+    if (!f || !input.files.length) return;
+    const urls = await uploadFilesToImgbb(input.files);
+    if (!f.entries[i].photos) f.entries[i].photos = [];
+    f.entries[i].photos.push(...urls);
+    telephoniqueSaveData();
+    telephoniqueRenderEntries();
+}
+
+async function telephoniqueDropPhoto(i, e) {
+    if (!telephoniqueCanWrite()) return;
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    const f = telephoniqueForm();
+    if (!f) return;
+    const urls = await uploadFilesToImgbb(e.dataTransfer.files);
+    if (!f.entries[i].photos) f.entries[i].photos = [];
+    f.entries[i].photos.push(...urls);
+    telephoniqueSaveData();
+    telephoniqueRenderEntries();
+}
+
+function telephoniqueDelPhoto(i, pi) {
+    if (!telephoniqueCanWrite()) return;
+    const f = telephoniqueForm();
+    if (!f) return;
+    f.entries[i].photos.splice(pi, 1);
+    telephoniqueSaveData();
+    telephoniqueRenderEntries();
+}
+
+// ---- Officiers (même modèle visuel que "Agents concernés" / interrogatoire) ----
+// Chaque officier = { username, label } — username=null pour les entrées @pseudo libres (hors compte)
+function telephoniqueOfficierChipHtml(o, i) {
+    const canWrite = telephoniqueCanWrite();
+    const delBtn = canWrite ? `<button type="button" onclick="telephoniqueRemoveOfficier(${i})" style="background:rgba(211,47,47,0.1);border:1px solid rgba(211,47,47,0.2);color:#ef5350;cursor:pointer;font-size:11px;padding:3px 7px;border-radius:6px;font-weight:700;margin-left:4px;">✕</button>` : '';
+    if (!o.username) {
+        return `<div style="background:linear-gradient(135deg,rgba(13,43,94,0.4),rgba(13,43,94,0.25));border:1px solid rgba(201,162,39,0.35);border-radius:10px;padding:8px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 2px 6px rgba(0,0,0,0.12);">
+            <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#0D2B5E,#1a4080);border:2px solid rgba(201,162,39,0.5);display:flex;align-items:center;justify-content:center;font-size:14px;color:#C9A227;flex-shrink:0;">👤</div>
+            <div style="font-size:13px;font-weight:700;color:#222;">${rapEsc(o.label)}</div>
+            ${delBtn}
+        </div>`;
+    }
+    const parts = o.label.split('|');
+    const grade = (parts[0]||'').trim();
+    const name = parts.slice(1).join('|').trim();
+    const initials = name.split(' ').filter(w=>w).map(w=>w[0]).slice(0,2).join('').toUpperCase() || '??';
+    return `<div style="background:linear-gradient(135deg,rgba(13,43,94,0.4),rgba(13,43,94,0.25));border:1px solid rgba(201,162,39,0.35);border-radius:10px;padding:8px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 2px 6px rgba(0,0,0,0.12);">
+        <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#0D2B5E,#1a4080);border:2px solid rgba(201,162,39,0.5);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#C9A227;flex-shrink:0;">${initials}</div>
+        <div>
+            <div style="font-size:10px;color:rgba(201,162,39,0.7);font-weight:700;letter-spacing:0.5px;text-transform:uppercase;">${rapEsc(grade)}</div>
+            <div style="font-size:13px;font-weight:700;color:#222;line-height:1.2;">${rapEsc(name)}</div>
+        </div>
+        ${delBtn}
+    </div>`;
+}
+
+function telephoniqueRenderOfficiers() {
+    const chips = document.getElementById('telephoniqueOfficiersChips');
+    const f = telephoniqueForm();
+    if (!chips || !f) return;
+    if (!f.officiers) f.officiers = [];
+    chips.innerHTML = f.officiers.map((o, i) => telephoniqueOfficierChipHtml(o, i)).join('')
+        || `<span style="font-size:13px;color:#888;font-style:italic;">Aucun officier sélectionné — accès en écriture réservé aux officiers assignés</span>`;
+    // Masquer les contrôles d'ajout si l'utilisateur n'a pas le droit d'écrire
+    const addWrap = document.getElementById('telephoniqueOfficiersAddWrap');
+    if (addWrap) addWrap.style.display = telephoniqueCanWrite() ? '' : 'none';
+    telephoniqueRenderSignatures();
+}
+
+function telephoniqueRenderSignatures() {
+    const wrap = document.getElementById('telephoniqueSignaturesWrap');
+    const f = telephoniqueForm();
+    if (!wrap || !f) return;
+    const officiers = f.officiers || [];
+    if (!officiers.length) { wrap.innerHTML = ''; return; }
+    wrap.innerHTML = officiers.map((o, i) => {
+        let grade = '', name = '';
+        if (o.username) {
+            const parts = (o.label || '').split('|');
+            grade = (parts[0] || '').trim();
+            name = parts.slice(1).join('|').trim();
+        } else {
+            name = (o.label || '').replace(/^@/, '');
+            grade = 'Agent';
+        }
+        // Légère rotation aléatoire (mais stable) pour un rendu "signé à la main"
+        const angle = (((name.length * 7 + i * 13) % 9) - 4) * 0.6;
+        return `<div class="m-signature-card">
+            <div class="m-signature-ink">
+                <div class="m-signature-script" style="transform:rotate(${angle}deg);">${rapEsc(name || '—')}</div>
+            </div>
+            <div class="m-signature-underline"></div>
+            <div class="m-signature-readable-name">${rapEsc(name)}</div>
+            <div class="m-signature-caps">${rapEsc(grade)}</div>
+        </div>`;
+    }).join('');
+}
+
+function telephoniqueOfficierItemHtml(a, currentUsernames) {
+    const label = (a.grade||'') + ' | ' + (a.first_name||'') + ' ' + (a.last_name||'');
+    const checked = currentUsernames.includes(a.username) ? 'checked' : '';
+    const initials = [(a.first_name||'?')[0], (a.last_name||'?')[0]].join('').toUpperCase();
+    const gradeColors = {
+        'commanding': '#e74c3c', 'supervisor cid': '#9b59b6',
+        'master investigator': '#C9A227', 'sénior détective': '#3498db',
+        'senior detective': '#3498db', 'détective': '#2ecc71',
+        'detective': '#2ecc71'
+    };
+    const gradeColor = gradeColors[(a.grade||'').toLowerCase()] || '#aaa';
+    return `<label data-label="${label}" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer;transition:background 0.12s;margin-bottom:2px;" onmouseover="this.style.background='rgba(201,162,39,0.1)'" onmouseout="this.style.background=''">
+        <input type="checkbox" value="${a.username}" data-label="${label}" ${checked} style="width:16px;height:16px;accent-color:#C9A227;cursor:pointer;flex-shrink:0;">
+        <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#0D2B5E,#1a4080);border:2px solid ${gradeColor};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:${gradeColor};flex-shrink:0;">${initials}</div>
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:10px;font-weight:700;color:${gradeColor};text-transform:uppercase;letter-spacing:0.5px;">${a.grade||''}</div>
+            <div style="font-size:13px;font-weight:600;color:#222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${(a.first_name||'')} ${(a.last_name||'')}</div>
+        </div>
+    </label>`;
+}
+
+async function telephoniquePopulateOfficiersList() {
+    if (!_editorAccountsCache.length) await loadEditorAccounts();
+    const list = document.getElementById('telephoniqueOfficiersList');
+    const f = telephoniqueForm();
+    if (!list || !f) return;
+    const current = (f.officiers || []).map(o => o.username).filter(Boolean);
+    list.innerHTML = _editorAccountsCache.map(a => telephoniqueOfficierItemHtml(a, current)).join('')
+        || `<div style="font-size:12px;color:#888;font-style:italic;padding:6px;">Aucun compte enregistré</div>`;
+}
+
+function telephoniqueFilterOfficiersDropdown(query) {
+    const list = document.getElementById('telephoniqueOfficiersList');
+    if (!list) return;
+    const q = query.toLowerCase();
+    list.querySelectorAll('label[data-label]').forEach(el => {
+        el.style.display = el.dataset.label.toLowerCase().includes(q) ? '' : 'none';
+    });
+}
+
+function telephoniqueToggleOfficiersDropdown() {
+    if (!telephoniqueCanWrite()) return;
+    const dd = document.getElementById('telephoniqueOfficiersDropdown');
+    const arrow = document.getElementById('telephoniqueOfficiersArrow');
+    if (!dd) return;
+    const isOpen = dd.style.display !== 'none';
+    dd.style.display = isOpen ? 'none' : 'block';
+    if (arrow) arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
+    if (!isOpen) {
+        telephoniquePopulateOfficiersList();
+        setTimeout(() => { const s = document.getElementById('telephoniqueOfficiersSearch'); if (s) { s.value = ''; s.focus(); } }, 80);
+    }
+}
+
+function telephoniqueConfirmOfficiers() {
+    if (!telephoniqueCanWrite()) return;
+    const dd = document.getElementById('telephoniqueOfficiersDropdown');
+    const list = document.getElementById('telephoniqueOfficiersList');
+    const f = telephoniqueForm();
+    if (!f) return;
+    const checkedBoxes = [...(list||dd||document).querySelectorAll('input[type=checkbox]:checked')];
+    const memberEntries = checkedBoxes.map(cb => ({ username: cb.value, label: cb.dataset.label || cb.value }));
+    const customOnes = (f.officiers||[]).filter(o => !o.username);
+    f.officiers = [...memberEntries, ...customOnes];
+    telephoniqueSaveData();
+    telephoniqueRenderOfficiers();
+    if (dd) dd.style.display = 'none';
+    const arrow = document.getElementById('telephoniqueOfficiersArrow');
+    if (arrow) arrow.style.transform = '';
+}
+
+function telephoniqueAddCustomOfficier() {
+    if (!telephoniqueCanWrite()) return;
+    const input = document.getElementById('telephoniqueOfficiersCustomInput');
+    const f = telephoniqueForm();
+    if (!input || !f) return;
+    let val = input.value.trim();
+    if (!val) return;
+    if (!val.startsWith('@')) val = '@' + val;
+    if (!f.officiers) f.officiers = [];
+    if (!f.officiers.some(o => o.label === val)) f.officiers.push({ username: null, label: val });
+    input.value = '';
+    telephoniqueSaveData();
+    telephoniqueRenderOfficiers();
+}
+
+function telephoniqueRemoveOfficier(i) {
+    if (!telephoniqueCanWrite()) return;
+    const f = telephoniqueForm();
+    if (!f) return;
+    f.officiers.splice(i, 1);
+    telephoniqueSaveData();
+    telephoniqueRenderOfficiers();
+}
+
+// ---- Modal créer/renommer un telephonique ----
+let _telModalMode = null, _telModalTargetId = null;
+function openTelephoniqueModal(mode, id=null, defaultVal='Mandat téléphonique — ') {
+    _telModalMode = mode; _telModalTargetId = id;
+    const modal = document.getElementById('telephoniqueNameModal');
+    const inp = document.getElementById('telephoniqueNameModalInput');
+    const title = document.getElementById('telephoniqueNameModalTitle');
+    if (!modal) return;
+    title.textContent = mode === 'create' ? 'Créer un mandat téléphonique' : 'Renommer le mandat';
+    inp.value = defaultVal;
+    modal.classList.add('active');
+    setTimeout(() => inp.focus(), 100);
+}
+function closeTelephoniqueModal() {
+    const modal = document.getElementById('telephoniqueNameModal');
+    if (modal) modal.classList.remove('active');
+    _telModalMode = null; _telModalTargetId = null;
+}
+async function confirmTelephoniqueModal() {
+    const name = document.getElementById('telephoniqueNameModalInput').value.trim();
+    if (!name) { alert('Veuillez entrer un nom'); return; }
+    const mode = _telModalMode, id = _telModalTargetId;
+    closeTelephoniqueModal();
+    if (mode === 'create') await _doCreateTelephonique(name);
+    else if (mode === 'rename') await _doRenameTelephonique(id, name);
+}
+(function() {
+    const el = document.createElement('div');
+    el.innerHTML = `<div id="telephoniqueNameModal" class="modal" onclick="if(event.target===this)closeTelephoniqueModal()">
+        <div class="modal-dialog">
+            <h2 id="telephoniqueNameModalTitle">Créer un mandat téléphonique</h2>
+            <input type="text" id="telephoniqueNameModalInput" placeholder="Nom du mandat">
+            <div class="modal-actions">
+                <button class="btn-confirm" onclick="confirmTelephoniqueModal()">Confirmer</button>
+                <button class="btn-cancel" onclick="closeTelephoniqueModal()">Annuler</button>
+            </div>
+        </div>
+    </div>`;
+    document.body.appendChild(el.firstElementChild);
+    document.getElementById('telephoniqueNameModalInput').addEventListener('keydown', e => { if(e.key==='Enter') confirmTelephoniqueModal(); });
 })();
 
 
