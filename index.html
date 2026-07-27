@@ -1348,6 +1348,7 @@
                     <div class="nav-dropdown-item" data-tab="injonction" onclick="selectDossiersMenu('injonction')">🏠 Injonction</div>
                     <div class="nav-dropdown-item" data-tab="bilan" onclick="selectDossiersMenu('bilan')">📊 Bilan</div>
                     <div class="nav-dropdown-item" data-tab="telephonique" onclick="selectDossiersMenu('telephonique')">📱 Téléphonique</div>
+                    <div class="nav-dropdown-item" data-tab="bilanTel" onclick="selectDossiersMenu('bilanTel')">📱 Bilan Tél.</div>
                 </div>
             </div>
             <button class="nav-tab" id="tabCarte" onclick="switchMainTab('carte')" style="display:none;">
@@ -1602,6 +1603,11 @@
         <div class="tab-content" id="tabContentTelephonique">
             <div id="mainTelephoniqueContent"></div>
         </div>
+
+        <!-- TAB: BILAN DE PERQUISITION TELEPHONIQUE -->
+        <div class="tab-content" id="tabContentBilanTel">
+            <div id="mainBilanTelContent"></div>
+        </div>
     </div>
 </div>
 
@@ -1777,6 +1783,7 @@
             <option value="injonction">🏠 Page Injonction</option>
             <option value="bilan">📊 Page Bilan</option>
             <option value="telephonique">📱 Page Téléphonique</option>
+            <option value="bilanTel">📱 Page Bilan Tél.</option>
         </select></div>
         <div id="docUrlField" style="margin-bottom:12px;"><label style="font-size:12px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">URL *</label>
         <input type="text" id="docUrl" placeholder="https://..." style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--input-bg);color:var(--text);"></div>
@@ -2222,6 +2229,15 @@ _modulePollers.telephonique = createRealtimePoller('telephonique', {
     getCurrentId: () => currentTelephoniqueId,
     renderListFn: renderTelephoniquesList,
     renderEditorFn: renderTelephoniqueEditor
+});
+_modulePollers.bilanTel = createRealtimePoller('bilanTel', {
+    supabaseKey: 'cid_bilanTels',
+    localStorageKey: 'cid_bilanTels',
+    getList: () => cidBilanTels,
+    containerId: 'mainBilanTelContent',
+    getCurrentId: () => currentBilanTelId,
+    renderListFn: renderBilanTelsList,
+    renderEditorFn: renderBilanTelEditor
 });
 _modulePollers.rapport = createRealtimePoller('rapport', {
     supabaseKey: 'cid_rapports',
@@ -3312,6 +3328,7 @@ window.addEventListener('load', async () => {
     const linkInjonctionId = params.get('injonction');
     const linkBilanId = params.get('bilan');
     const linkTelephoniqueId = params.get('telephonique');
+    const linkBilanTelId = params.get('bilanTel');
     if(linkRapportId){
         localStorage.setItem('cid_pending_link', JSON.stringify({ rapportId: linkRapportId }));
         window.history.replaceState({}, '', window.location.pathname);
@@ -3326,6 +3343,9 @@ window.addEventListener('load', async () => {
         window.history.replaceState({}, '', window.location.pathname);
     } else if(linkTelephoniqueId){
         localStorage.setItem('cid_pending_link', JSON.stringify({ telephoniqueId: linkTelephoniqueId }));
+        window.history.replaceState({}, '', window.location.pathname);
+    } else if(linkBilanTelId){
+        localStorage.setItem('cid_pending_link', JSON.stringify({ bilanTelId: linkBilanTelId }));
         window.history.replaceState({}, '', window.location.pathname);
     } else if(linkInterroId){
         localStorage.setItem('cid_pending_link', JSON.stringify({ interroId: linkInterroId }));
@@ -3435,6 +3455,20 @@ window.addEventListener('load', async () => {
                                 switchMainTab('telephonique');
                                 setTimeout(() => openTelephonique(data.telephoniqueId), 300);
                             } catch(e) { switchMainTab('telephonique'); }
+                        }, 400);
+                        return;
+                    }
+
+                    // Lien vers un bilan de perquisition téléphonique
+                    if (data.bilanTelId) {
+                        setTimeout(async () => {
+                            try {
+                                await loadOrgMembersFromSupabase();
+                                grantBilanTelLinkAccess(data.bilanTelId);
+                                await loadCidBilanTels();
+                                switchMainTab('bilanTel');
+                                setTimeout(() => openBilanTel(data.bilanTelId), 300);
+                            } catch(e) { switchMainTab('bilanTel'); }
                         }, 400);
                         return;
                     }
@@ -4731,6 +4765,34 @@ async function checkPendingLink() {
         return;
     }
 
+    // Lien vers un bilan de perquisition téléphonique — lecture pour tous, écriture pour les officiers assignés
+    if (data.bilanTelId) {
+        setTimeout(async () => {
+            try {
+                await loadOrgMembersFromSupabase();
+                grantBilanTelLinkAccess(data.bilanTelId);
+                await loadCidBilanTels();
+                switchMainTab('bilanTel');
+                setTimeout(() => openBilanTel(data.bilanTelId), 300);
+            } catch(e) { switchMainTab('bilanTel'); }
+        }, 400);
+        return;
+    }
+
+    // Lien vers un bilan de perquisition téléphonique — lecture pour tous, écriture pour les officiers assignés
+    if (data.bilanTelId) {
+        setTimeout(async () => {
+            try {
+                await loadOrgMembersFromSupabase();
+                grantBilanTelLinkAccess(data.bilanTelId);
+                await loadCidBilanTels();
+                switchMainTab('bilanTel');
+                setTimeout(() => openBilanTel(data.bilanTelId), 300);
+            } catch(e) { switchMainTab('bilanTel'); }
+        }, 400);
+        return;
+    }
+
     // Lien vers un interrogatoire — accès libre pour tous si on a le lien
     if (data.interroId) {
         await loadCidDepositions();
@@ -5514,7 +5576,7 @@ function switchMainTab(tab) {
     stopAllModulePollers();
 
     const tabIdMap = { dossiers:'tabDossiers', carte:'tabCarte', orgchart:'tabOrgChart', documents:'tabDocuments', deposition:'tabDeposition', rapport:'tabRapport' };
-    const contentIdMap = { dossiers:'tabContentDossiers', carte:'tabContentCarte', orgchart:'tabContentOrgChart', documents:'tabContentDocuments', deposition:'tabContentDeposition', rapport:'tabContentRapport', mandat:'tabContentMandat', injonction:'tabContentInjonction', bilan:'tabContentBilan', telephonique:'tabContentTelephonique' };
+    const contentIdMap = { dossiers:'tabContentDossiers', carte:'tabContentCarte', orgchart:'tabContentOrgChart', documents:'tabContentDocuments', deposition:'tabContentDeposition', rapport:'tabContentRapport', mandat:'tabContentMandat', injonction:'tabContentInjonction', bilan:'tabContentBilan', telephonique:'tabContentTelephonique', bilanTel:'tabContentBilanTel' };
     Object.entries(tabIdMap).forEach(([k,id]) => {
         const el = document.getElementById(id);
         if (el) el.classList.toggle('active', k === tab);
@@ -5525,11 +5587,11 @@ function switchMainTab(tab) {
     });
 
     // --- Dropdown Dossiers/Interrogatoire : le déclencheur reste actif pour les deux ---
-    const inDossiersGroup = (tab === 'dossiers' || tab === 'deposition' || tab === 'rapport' || tab === 'mandat' || tab === 'injonction' || tab === 'bilan' || tab === 'telephonique');
+    const inDossiersGroup = (tab === 'dossiers' || tab === 'deposition' || tab === 'rapport' || tab === 'mandat' || tab === 'injonction' || tab === 'bilan' || tab === 'telephonique' || tab === 'bilanTel');
     const dossiersBtn = document.getElementById('tabDossiers');
     if (dossiersBtn) dossiersBtn.classList.toggle('active', inDossiersGroup);
     const dossiersLabel = document.getElementById('dossiersTabLabel');
-    if (dossiersLabel && inDossiersGroup) dossiersLabel.textContent = tab === 'deposition' ? '📄 Interrogatoire' : tab === 'rapport' ? '📋 Rapport' : tab === 'mandat' ? '📜 Mandat' : tab === 'injonction' ? '🏠 Injonction' : tab === 'bilan' ? '📊 Bilan' : tab === 'telephonique' ? '📱 Téléphonique' : '📁 Dossiers';
+    if (dossiersLabel && inDossiersGroup) dossiersLabel.textContent = tab === 'deposition' ? '📄 Interrogatoire' : tab === 'rapport' ? '📋 Rapport' : tab === 'mandat' ? '📜 Mandat' : tab === 'injonction' ? '🏠 Injonction' : tab === 'bilan' ? '📊 Bilan' : tab === 'telephonique' ? '📱 Téléphonique' : tab === 'bilanTel' ? '📱 Bilan Tél.' : '📁 Dossiers';
     document.querySelectorAll('#dossiersDropdownMenu .nav-dropdown-item').forEach(it => {
         it.classList.toggle('active', it.dataset.tab === tab);
     });
@@ -5544,6 +5606,7 @@ function switchMainTab(tab) {
     if (tab === 'injonction') { renderMainInjonctionTab(); _modulePollers.injonction.start(); }
     if (tab === 'bilan') { renderMainBilanTab(); _modulePollers.bilan.start(); }
     if (tab === 'telephonique') { renderMainTelephoniqueTab(); _modulePollers.telephonique && _modulePollers.telephonique.start(); }
+    if (tab === 'bilanTel') { renderMainBilanTelTab(); _modulePollers.bilanTel && _modulePollers.bilanTel.start(); }
     if (tab === 'carte') { initCarte(); setTimeout(() => { if(_carteMap) { _carteMap.invalidateSize(true); } }, 300); }
     // Onglet Carte : la page prend toute la largeur de l'écran pour un affichage plus grand
     const dossiersContainer = document.getElementById('dossiersPageContainer');
@@ -5915,6 +5978,9 @@ function openDocLink(type, id) {
     } else if (type === 'telephonique') {
         if (id === 'internal') { switchMainTab('telephonique'); return; }
         loadCidTelephoniques().then(() => { switchMainTab('telephonique'); setTimeout(() => openTelephonique(id), 300); });
+    } else if (type === 'bilanTel') {
+        if (id === 'internal') { switchMainTab('bilanTel'); return; }
+        loadCidBilanTels().then(() => { switchMainTab('bilanTel'); setTimeout(() => openBilanTel(id), 300); });
     }
 }
 
@@ -5925,7 +5991,8 @@ const DOC_TYPE_DEFAULTS = {
     mandat:        { category: 'Perquisitions Immobilières', icon: '📜' },
     injonction:    { category: 'Perquisitions Immobilières', icon: '🏠' },
     bilan:         { category: 'Perquisitions Immobilières', icon: '📊' },
-    telephonique:  { category: 'Perquisitions Téléphoniques', icon: '📱' }
+    telephonique:  { category: 'Perquisitions Téléphoniques', icon: '📱' },
+    bilanTel:      { category: 'Perquisitions Téléphoniques', icon: '📱' }
 };
 
 function toggleDocLinkType() {
@@ -6000,6 +6067,8 @@ function renderDocumentsTab() {
                     _onclick = "openDocLink('bilan','internal')";
                 } else if (doc.linkType === 'telephonique') {
                     _onclick = "openDocLink('telephonique','internal')";
+                } else if (doc.linkType === 'bilanTel') {
+                    _onclick = "openDocLink('bilanTel','internal')";
                 } else {
                     try {
                         const _u = new URL(doc.url, window.location.href);
@@ -6009,12 +6078,14 @@ function renderDocumentsTab() {
                         const _jid = _u.searchParams.get('injonction');
                         const _bid = _u.searchParams.get('bilan');
                         const _tid = _u.searchParams.get('telephonique');
+                        const _btid = _u.searchParams.get('bilanTel');
                         if (_iid) _onclick = "openDocLink('interro','" + _iid + "')";
                         else if (_rid) _onclick = "openDocLink('rapport','" + _rid + "')";
                         else if (_mid) _onclick = "openDocLink('mandat','" + _mid + "')";
                         else if (_jid) _onclick = "openDocLink('injonction','" + _jid + "')";
                         else if (_bid) _onclick = "openDocLink('bilan','" + _bid + "')";
                         else if (_tid) _onclick = "openDocLink('telephonique','" + _tid + "')";
+                        else if (_btid) _onclick = "openDocLink('bilanTel','" + _btid + "')";
                         else _onclick = "window.open('" + doc.url.replace(/'/g,"\'") + "','_blank')";
                     } catch(e) { _onclick = "window.open('" + doc.url + "','_blank')"; }
                 }
@@ -11578,6 +11649,699 @@ async function confirmTelephoniqueModal() {
 })();
 
 
+
+
+// ==================== BILANS DE PERQUISITION TÉLÉPHONIQUE (liste + éditeur) ====================
+let cidBilanTels = [];
+let currentBilanTelId = null;
+let cidBilanTelsLoaded = false;
+
+function blankBilanTelForm() {
+    return {
+        lieu: 'Office de Vespucci',
+        date: new Date().toLocaleDateString('fr-FR'),
+        officiers: [],
+        row: { nom: '', prenom: '', telephone: '555-' },
+        contacts: [],
+        notes: [],
+        sms: [],
+        photos: [],
+        synthese: []
+    };
+}
+
+async function loadCidBilanTels() {
+    try {
+        const rows = await sbFetch('org_settings?key=eq.cid_bilanTels&select=value');
+        if (rows && rows[0]) {
+            cidBilanTels = JSON.parse(rows[0].value || '[]');
+            cidBilanTelsLoaded = true;
+            localStorage.setItem('cid_bilanTels', JSON.stringify(cidBilanTels));
+            return;
+        }
+    } catch(e) {}
+    try { cidBilanTels = JSON.parse(localStorage.getItem('cid_bilanTels') || '[]'); } catch(e) { cidBilanTels = []; }
+    cidBilanTelsLoaded = true;
+}
+
+async function saveCidBilanTels() {
+    localStorage.setItem('cid_bilanTels', JSON.stringify(cidBilanTels));
+    try {
+        await sbUpsertSetting('cid_bilanTels', JSON.stringify(cidBilanTels));
+    } catch(e) {}
+}
+
+let _bilanTelAccess = {};
+function _loadBilanTelAccess() {
+    try { _bilanTelAccess = JSON.parse(localStorage.getItem('cid_bilanTel_access') || '{}'); } catch(e) { _bilanTelAccess = {}; }
+}
+function _saveBilanTelAccess() {
+    try { localStorage.setItem('cid_bilanTel_access', JSON.stringify(_bilanTelAccess)); } catch(e) {}
+}
+function grantBilanTelLinkAccess(id) {
+    _loadBilanTelAccess();
+    _bilanTelAccess[id] = ['_open_'];
+    _saveBilanTelAccess();
+}
+function canViewBilanTel(id) {
+    if (getPermLevel() !== 'procureur') return true;
+    // Procureur : accès uniquement si le lien lui a été donné explicitement
+    if (!Object.keys(_bilanTelAccess).length) _loadBilanTelAccess();
+    return (_bilanTelAccess[id] || []).length > 0;
+}
+
+// ---- Permission d'écriture : réservée aux officiers assignés sur CE bilanTel (+ Master Investigator/Commanding toujours) ----
+function canEditBilanTel(id) {
+    const m = cidBilanTels.find(x => x.id === id);
+    if (!m || !m.form || !m.form.officiers || !currentUser) return false;
+    return m.form.officiers.some(o => o && o.username && o.username === currentUser.username);
+}
+function bilanTelCanWrite() {
+    return canEditBilanTel(currentBilanTelId);
+}
+
+// ---- Entrée principale ----
+async function renderMainBilanTelTab() {
+    const container = document.getElementById('mainBilanTelContent');
+    if (!container) return;
+    if (!cidBilanTelsLoaded) {
+        container.innerHTML = '<div style="text-align:center;padding:30px;color:#C9A227">⏳ Chargement...</div>';
+        await loadCidBilanTels();
+    }
+    if (currentBilanTelId) renderBilanTelEditor(container);
+    else renderBilanTelsList(container);
+}
+
+// ---- Vue liste ----
+function renderBilanTelsList(container) {
+    const canCreate = getPermLevel() !== 'procureur';
+    _listSearchRerender.bilanTel = () => renderBilanTelsList(container);
+
+    let html = `
+    <div style="margin-bottom:18px;">
+        <h2 style="color:#C9A227;font-size:20px;font-weight:900;margin:0 0 4px;">📱 Bilans de perquisition téléphonique</h2>
+        <p style="color:var(--text3);font-size:13px;margin:0;">Bilans de perquisition téléphonique de la Criminal Investigation Division · Écriture réservée aux agents en charge · Procureurs : accès uniquement via lien</p>
+    </div>`;
+
+    if (canCreate) html += `<button class="btn-new-dossier" onclick="createBilanTel()">+ Créer un nouveau bilan téléphonique</button>`;
+    html += _searchBarHtml('bilanTel', '🔍 Rechercher par nom, mois (ex: Juillet 2026), agent...');
+
+    const allVisible = cidBilanTels.filter(m => canViewBilanTel(m.id));
+    const visible = allVisible.filter(m => _matchesSearch('bilanTel', m.name, m.modified_at, _officiersToTexts(m.form && m.form.officiers)));
+
+    if (visible.length === 0) {
+        html += `<div class="empty-state"><h2>${allVisible.length ? 'Aucun résultat' : 'Aucun bilan téléphonique'}</h2><p>${allVisible.length ? 'Essayez une autre recherche' : (canCreate ? 'Créez un nouveau bilan téléphonique pour commencer' : 'Aucun bilan téléphonique disponible')}</p></div>`;
+        container.innerHTML = html;
+        return;
+    }
+
+    html += renderGroupedByMonth(visible, m => m.modified_at, m => {
+        const canWrite = canEditBilanTel(m.id);
+        return `
+        <div class="dossier-card">
+            <div class="dossier-card-top">
+                <div class="dossier-card-icon">📱</div>
+                <div class="dossier-card-info">
+                    <h3>${rapEsc(m.name)}</h3>
+                    <div class="dossier-card-meta">
+                        <span>@${rapEsc(m.username)||'—'}</span>
+                        <span>${rapEsc(m.modified_at)}</span>
+                        ${canWrite ? '' : '<span title="Lecture seule — vous n\'êtes pas assigné">🔒</span>'}
+                    </div>
+                </div>
+            </div>
+            <div class="dossier-card-actions">
+                <button class="dcard-btn dcard-btn-open" onclick="openBilanTel('${m.id}')">📱 Ouvrir le bilan</button>
+                <div class="dossier-card-actions-row">
+                    <button class="dcard-btn" onclick="copyBilanTelLink('${m.id}')" style="background:rgba(123,45,139,0.12);color:#7B2D8B;border:1px solid rgba(123,45,139,0.3);">🔗 Copier le lien</button>
+                    ${canWrite ? `<button class="dcard-btn dcard-btn-rename" onclick="renameBilanTel('${m.id}')">✏️ Renommer</button>` : ''}
+                    ${canDeleteDossier() ? `<button class="dcard-btn dcard-btn-del" onclick="deleteBilanTel('${m.id}')">🗑 Suppr.</button>` : ''}
+                </div>
+            </div>
+        </div>`;
+    }, 'bilanTel');
+
+    container.innerHTML = html;
+}
+
+// ---- Actions cartes ----
+async function createBilanTel() { openBilanTelModal('create'); }
+async function _doCreateBilanTel(name) {
+    const now = new Date().toLocaleDateString('fr-FR');
+    const form = blankBilanTelForm();
+    // Le créateur est automatiquement assigné comme officier en charge (sinon il serait bloqué en lecture seule)
+    if (currentUser) {
+        const label = `${currentUser.grade||''} | ${currentUser.firstName||''} ${currentUser.lastName||''}`.trim();
+        form.officiers.push({ username: currentUser.username, label });
+    }
+    cidBilanTels.unshift({ id: Date.now().toString(), name: name.trim(), username: currentUser?currentUser.username:'', created_at: now, modified_at: now, form });
+    await saveCidBilanTels();
+    renderMainBilanTelTab();
+}
+
+function openBilanTel(id) {
+    currentBilanTelId = id;
+    renderMainBilanTelTab();
+    setTimeout(() => {
+        document.querySelectorAll('#mainBilanTelContent textarea').forEach(ta => bilanTelAutoGrow(ta));
+    }, 100);
+}
+function closeBilanTel() { saveCidBilanTels(); currentBilanTelId = null; renderMainBilanTelTab(); }
+
+async function renameBilanTel(id) {
+    const m = cidBilanTels.find(x => x.id === id);
+    if (!m) return;
+    openBilanTelModal('rename', id, m.name);
+}
+async function _doRenameBilanTel(id, name) {
+    const m = cidBilanTels.find(x => x.id === id);
+    if (!m) return;
+    m.name = name.trim();
+    m.modified_at = new Date().toLocaleDateString('fr-FR');
+    await saveCidBilanTels();
+    renderMainBilanTelTab();
+}
+
+async function deleteBilanTel(id) {
+    if (!confirm('Supprimer ce bilan téléphonique ? Action irréversible.')) return;
+    const i = cidBilanTels.findIndex(x => x.id === id);
+    if (i >= 0) cidBilanTels.splice(i, 1);
+    if (currentBilanTelId === id) currentBilanTelId = null;
+    await saveCidBilanTels();
+    renderMainBilanTelTab();
+}
+
+function copyBilanTelLink(id) {
+    const base = getShareBaseUrl();
+    const m = cidBilanTels.find(x => x.id === id);
+    const nomSlug = m ? m.name.replace(/[^a-zA-Z0-9À-ÿ\s-]/g,'').trim().replace(/\s+/g,'-').substring(0,50) : '';
+    const link = `${base}?bilanTel=${id}${nomSlug ? '&nom='+encodeURIComponent(nomSlug) : ''}`;
+    navigator.clipboard.writeText(link).then(() => {
+        showSuccessDossiers("🔗 Lien du bilan copié ! Toute personne connectée pourra le consulter (lecture seule sauf agents assignés).");
+    }).catch(() => prompt('Copie ce lien :', link));
+    if (m) {
+        const owner = m.username ? `@${m.username}` : '';
+        updateOgMeta(`${m.name} — CID`, `📱 Bilan de perquisition téléphonique${owner ? ' • '+owner : ''} · Crime Investigation Division · Cliquez pour consulter`);
+    }
+}
+
+async function exportBilanTelToGoogleDocs(id) {
+    const m = cidBilanTels.find(x => x.id === id);
+    if (!m || !m.form) return;
+    const f = m.form;
+    const row = f.row || { nom:'', prenom:'', telephone:'' };
+    await exportToGoogleDocs(m.name, (state) => {
+        _gAddTitleBlock(state, 'BILAN DE PERQUISITION TÉLÉPHONIQUE');
+        _gAddSpacer(state);
+        _gAddLine(state, `Fait à ${f.lieu || ''}, le ${f.date || ''}.`, { italic: true });
+        _gAddSectionTitle(state, 'Propriétaire du téléphone');
+        _gAddLine(state, `Nom : ${row.nom || '—'}   |   Prénom : ${row.prenom || '—'}   |   Téléphone : ${row.telephone || '—'}`);
+        _gAddSectionTitle(state, 'Partie I — Les contacts');
+        _gAddEntries(state, f.contacts, 'Aucun élément renseigné.');
+        _gAddSectionTitle(state, 'Partie II — Notes du téléphone');
+        _gAddEntries(state, f.notes, 'Aucun élément renseigné.');
+        _gAddSectionTitle(state, 'Partie III — Les conversations SMS');
+        _gAddEntries(state, f.sms, 'Aucun élément renseigné.');
+        _gAddSectionTitle(state, 'Partie IV — Photos de la galerie');
+        _gAddEntries(state, f.photos, 'Aucun élément renseigné.');
+        _gAddSectionTitle(state, 'Partie V — Synthèse des informations importantes');
+        _gAddEntries(state, f.synthese, 'Aucun élément renseigné.');
+        _gAddSignatures(state, f.officiers);
+    });
+}
+
+// ---- Helpers données du bilanTel actuellement ouvert ----
+function bilanTelForm() {
+    const m = cidBilanTels.find(x => x.id === currentBilanTelId);
+    return m ? m.form : null;
+}
+let _bilanTelSaveDebounceTimer = null;
+function bilanTelSaveData() {
+    const m = cidBilanTels.find(x => x.id === currentBilanTelId);
+    if (m) m.modified_at = new Date().toLocaleDateString('fr-FR');
+    clearTimeout(_bilanTelSaveDebounceTimer);
+    _bilanTelSaveDebounceTimer = setTimeout(() => { saveCidBilanTels(); }, 700);
+}
+
+// ---- Éditeur (une page façon document officiel) ----
+function renderBilanTelEditor(container) {
+    const m = cidBilanTels.find(x => x.id === currentBilanTelId);
+    if (!m) { currentBilanTelId = null; renderBilanTelsList(container); return; }
+    const f = m.form || (m.form = blankBilanTelForm());
+    if (!f.row) f.row = { nom:'', prenom:'', telephone:'555-' };
+    if (typeof f.lieu !== 'string') f.lieu = 'Office de Vespucci';
+    ['contacts','notes','sms','photos','synthese'].forEach(k => { if (!f[k]) f[k] = []; });
+    if (!f.officiers) f.officiers = [];
+    // Migration : ancien format (string) -> objet {username, label}
+    f.officiers = f.officiers.map(o => typeof o === 'string' ? { username: null, label: o } : o).filter(o => o && o.label);
+    const canWrite = canEditBilanTel(m.id);
+    const id = m.id;
+
+    const sectionHtml = (key, num, titre, icone) => `
+        <div class="m-section-box">
+            <div class="m-section-header"><span class="m-sh-icon">${icone}</span> Partie ${num} — ${titre}</div>
+            <div style="padding:14px 16px 18px;">
+                <div class="m-timeline" id="bilanTel-${key}-List"></div>
+                ${canWrite ? `<button class="m-add-entry-btn" onclick="bilanTelAddEntry('${key}')">+ Ajouter un élément (texte + image)</button>` : ''}
+            </div>
+        </div>`;
+
+    container.innerHTML = `
+    <div class="dossier-toolbar" style="margin-bottom:18px;">
+        <button class="btn-toolbar btn-back" onclick="closeBilanTel()">← Retour</button>
+        <span style="font-size:15px;font-weight:700;color:#C9A227;flex:1;">${rapEsc(m.name)}</span>
+        <button class="btn-toolbar" onclick="copyBilanTelLink('${id}')" style="background:rgba(123,45,139,0.15);color:#d9a8f0;border:1px solid rgba(123,45,139,0.4);">🔗 Copier le lien</button>
+        <button class="btn-toolbar" onclick="exportBilanTelToGoogleDocs('${id}')" style="background:rgba(15,157,88,0.15);color:#5fd68f;border:1px solid rgba(15,157,88,0.4);">📤 Exporter vers Google Docs</button>
+        ${canWrite ? `<button class="btn-toolbar" onclick="renameBilanTel('${id}')" style="background:rgba(201,162,39,0.15);color:#C9A227;border:1px solid rgba(201,162,39,0.3);">✏️ Renommer</button>` : ''}
+    </div>
+    ${!canWrite ? `<div style="max-width:740px;margin:0 auto 16px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.35);color:#e0b830;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;">🔒 Lecture seule — seuls les officiers assignés à ce bilan téléphonique peuvent le modifier.</div>` : ''}
+
+    <div class="mandat-wrap" style="padding-top:0;">
+        <div class="mandat-doc" contenteditable="false">
+            <div class="m-page">
+                <div class="m-header">
+                    <div class="m-eyebrow">— Crime Investigation Division —</div>
+                    <h1 class="m-title">📱 BILAN DE PERQUISITION TÉLÉPHONIQUE</h1>
+                    <div class="m-subtitle">Criminal Investigation Division</div>
+                </div>
+                <div class="m-page-inner" style="padding-top:24px;">
+
+                    <div class="m-section-box">
+                        <div class="m-section-header"><span class="m-sh-icon">🏛️</span> Informations générales</div>
+                        <div class="m-fields">
+                            <div class="m-field-row">
+                                <div class="m-field">
+                                    <b>Fait à</b>
+                                    <input type="text" class="m-input" placeholder="Ex: Office de Vespucci" value="${rapEsc(f.lieu)}" oninput="bilanTelField('lieu',this.value)" ${canWrite?'':'readonly'}>
+                                </div>
+                                <div class="m-field">
+                                    <b>Le</b>
+                                    <input type="text" class="m-input" value="${rapEsc(f.date)}" oninput="bilanTelField('date',this.value)" ${canWrite?'':'readonly'}>
+                                </div>
+                            </div>
+                            <div class="m-field" style="display:block;">
+                                <b>Officiers</b>
+                                <div id="bilanTelOfficiersChips" style="display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 10px;"></div>
+                                <div id="bilanTelOfficiersAddWrap" style="position:relative;display:${canWrite ? '' : 'none'};">
+                                    <button type="button" onclick="bilanTelToggleOfficiersDropdown()" style="width:100%;padding:10px 14px;border:1px solid rgba(201,162,39,0.3);border-radius:10px;font-size:13px;font-weight:700;background:rgba(13,43,94,0.15);color:#C9A227;text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-family:Georgia,serif;">
+                                        <span style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">👤</span> Sélectionner des agents...</span>
+                                        <span id="bilanTelOfficiersArrow" style="font-size:12px;transition:transform 0.2s;">▾</span>
+                                    </button>
+                                    <div id="bilanTelOfficiersDropdown" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:#f7f7f7;border:1px solid rgba(201,162,39,0.3);border-radius:12px;max-height:280px;overflow-y:auto;z-index:200;box-shadow:0 12px 32px rgba(0,0,0,0.3);padding:8px;">
+                                        <div style="padding:8px 10px 10px;border-bottom:1px solid rgba(201,162,39,0.15);margin-bottom:6px;">
+                                            <input type="text" id="bilanTelOfficiersSearch" placeholder="🔍 Rechercher..." oninput="bilanTelFilterOfficiersDropdown(this.value)" style="width:100%;padding:7px 10px;border:1px solid #ccc;border-radius:7px;font-size:13px;background:#fff;color:#111;box-sizing:border-box;font-family:Georgia,serif;">
+                                        </div>
+                                        <div id="bilanTelOfficiersList"></div>
+                                        <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(201,162,39,0.15);">
+                                            <input type="text" id="bilanTelOfficiersCustomInput" placeholder="@pseudo (hors liste)" onkeydown="if(event.key==='Enter'){event.preventDefault();bilanTelAddCustomOfficier();}" style="flex:1;padding:6px 9px;border:1px solid #ccc;border-radius:6px;font-size:12px;font-family:Georgia,serif;">
+                                            <button type="button" onclick="bilanTelAddCustomOfficier()" style="background:#555;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:700;">+</button>
+                                        </div>
+                                    </div>
+                                    <button type="button" onclick="bilanTelConfirmOfficiers()" style="width:100%;margin-top:8px;padding:10px;background:linear-gradient(135deg,#C9A227,#e0b830);color:#0D2B5E;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:900;letter-spacing:0.3px;box-shadow:0 3px 10px rgba(201,162,39,0.25);font-family:Georgia,serif;">✅ Confirmer la sélection</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="m-section-box">
+                        <div class="m-section-header"><span class="m-sh-icon">📱</span> Propriétaire du téléphone</div>
+                        <div style="padding:14px 16px 18px;">
+                            <div style="overflow-x:auto;">
+                                <table style="width:100%;border-collapse:collapse;font-family:Georgia,serif;font-size:13.5px;">
+                                    <thead>
+                                        <tr>
+                                            <th style="background:rgba(13,43,94,0.9);color:#C9A227;text-align:left;padding:9px 12px;border:1px solid rgba(201,162,39,0.25);font-size:11px;letter-spacing:0.8px;text-transform:uppercase;">Nom</th>
+                                            <th style="background:rgba(13,43,94,0.9);color:#C9A227;text-align:left;padding:9px 12px;border:1px solid rgba(201,162,39,0.25);font-size:11px;letter-spacing:0.8px;text-transform:uppercase;">Prénom</th>
+                                            <th style="background:rgba(13,43,94,0.9);color:#C9A227;text-align:left;padding:9px 12px;border:1px solid rgba(201,162,39,0.25);font-size:11px;letter-spacing:0.8px;text-transform:uppercase;">Numéro de téléphone</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td style="padding:0;border:1px solid rgba(201,162,39,0.2);"><input type="text" style="width:100%;box-sizing:border-box;border:none;background:transparent;font-family:inherit;font-size:13.5px;padding:9px 12px;outline:none;color:#222;" value="${rapEsc(f.row.nom)}" placeholder="Nom" oninput="bilanTelRowField('nom',this.value)" ${canWrite?'':'readonly'}></td>
+                                            <td style="padding:0;border:1px solid rgba(201,162,39,0.2);"><input type="text" style="width:100%;box-sizing:border-box;border:none;background:transparent;font-family:inherit;font-size:13.5px;padding:9px 12px;outline:none;color:#222;" value="${rapEsc(f.row.prenom)}" placeholder="Prénom" oninput="bilanTelRowField('prenom',this.value)" ${canWrite?'':'readonly'}></td>
+                                            <td style="padding:0;border:1px solid rgba(201,162,39,0.2);"><input type="text" style="width:100%;box-sizing:border-box;border:none;background:transparent;font-family:inherit;font-size:13.5px;padding:9px 12px;outline:none;color:#222;" value="${rapEsc(f.row.telephone)}" placeholder="555-" oninput="bilanTelRowField('telephone',this.value)" ${canWrite?'':'readonly'}></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="font-family:Georgia,serif;font-size:16px;font-weight:700;text-align:center;text-decoration:underline;padding:10px 2px 4px;">Bilan de perquisition</div>
+
+                    ${sectionHtml('contacts', 'I', 'Les contacts', '📇')}
+                    ${sectionHtml('notes', 'II', 'Notes du téléphone', '📝')}
+                    ${sectionHtml('sms', 'III', 'Les conversations SMS', '💬')}
+                    ${sectionHtml('photos', 'IV', 'Photos de la galerie', '🖼️')}
+                    ${sectionHtml('synthese', 'V', 'Synthèse des informations importantes', '🧾')}
+
+                    <div style="font-family:Georgia,serif;font-size:14.5px;line-height:1.7;color:#2b2b2b;padding:8px 2px 0;">
+                        <p style="margin:0;">Nous vous prions d'agréer, monsieur le procureur, l'expression de nos respectueuses et sincères salutations,</p>
+                    </div>
+
+                    <div id="bilanTelSignaturesWrap" class="m-signatures-wrap"></div>
+                    <div class="m-page-footer">Bilan de perquisition téléphonique — CID Confidentiel</div>
+                </div>
+            </div>
+        </div>
+    </div>`;
+
+    bilanTelRenderOfficiers();
+    ['contacts','notes','sms','photos','synthese'].forEach(k => bilanTelRenderEntries(k));
+}
+
+function bilanTelField(key, value) {
+    if (!bilanTelCanWrite()) return;
+    const f = bilanTelForm();
+    if (!f) return;
+    f[key] = value;
+    bilanTelSaveData();
+}
+
+function bilanTelRowField(field, value) {
+    if (!bilanTelCanWrite()) return;
+    const f = bilanTelForm();
+    if (!f) return;
+    if (!f.row) f.row = { nom:'', prenom:'', telephone:'555-' };
+    f.row[field] = value;
+    bilanTelSaveData();
+}
+
+function bilanTelAutoGrow(el) {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+}
+
+// ---- Entrées (texte + photos) pour chacune des 5 parties fixes du bilan ----
+function bilanTelRenderEntries(section) {
+    const container = document.getElementById('bilanTel-' + section + '-List');
+    const f = bilanTelForm();
+    if (!container || !f) return;
+    if (!f[section]) f[section] = [];
+    const canWrite = bilanTelCanWrite();
+    container.innerHTML = f[section].map((entry, i) => `
+        <div class="m-entry-item">
+            <div class="m-entry-top">
+                <span class="m-pin">📌</span>
+                <input type="text" class="m-entry-date" value="${rapEsc(entry.date)}" oninput="bilanTelEntryDateField('${section}',${i},this.value)" title="Cliquez pour modifier la date" ${canWrite?'':'readonly'}>
+                <input type="text" class="m-entry-text" value="${rapEsc(entry.text)}" placeholder="Description..." oninput="bilanTelEntryField('${section}',${i},this.value)" ${canWrite?'':'readonly'}>
+                ${canWrite ? `<button class="m-entry-del" onclick="bilanTelDelEntry('${section}',${i})" title="Supprimer">✕</button>` : ''}
+            </div>
+            ${canWrite ? `
+            <div class="m-entry-dropzone" ondrop="bilanTelDropPhoto('${section}',${i},event)" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" onclick="this.querySelector('input').click()">
+                📸 Glissez une image ici ou cliquez
+                <input type="file" class="file-input" accept="image/*" multiple style="display:none;" onchange="bilanTelAddPhoto('${section}',${i},this)">
+            </div>` : ''}
+            ${(entry.photos||[]).length ? `
+            <div class="m-entry-photos">
+                ${(entry.photos||[]).map((ph, pi) => `
+                <div class="m-entry-photo">
+                    <img src="${ph}" onclick="openPhoto('${ph}')">
+                    ${canWrite ? `<button onclick="bilanTelDelPhoto('${section}',${i},${pi})">✕</button>` : ''}
+                </div>`).join('')}
+            </div>` : ''}
+        </div>
+    `).join('');
+}
+
+function bilanTelAddEntry(section) {
+    if (!bilanTelCanWrite()) return;
+    const f = bilanTelForm();
+    if (!f) return;
+    if (!f[section]) f[section] = [];
+    f[section].push({ date: new Date().toLocaleDateString('fr-FR'), text: '', photos: [] });
+    bilanTelSaveData();
+    bilanTelRenderEntries(section);
+}
+
+function bilanTelDelEntry(section, i) {
+    if (!bilanTelCanWrite()) return;
+    const f = bilanTelForm();
+    if (!f) return;
+    f[section].splice(i, 1);
+    bilanTelSaveData();
+    bilanTelRenderEntries(section);
+}
+
+function bilanTelEntryField(section, i, value) {
+    if (!bilanTelCanWrite()) return;
+    const f = bilanTelForm();
+    if (!f || !f[section][i]) return;
+    f[section][i].text = value;
+    bilanTelSaveData();
+}
+
+function bilanTelEntryDateField(section, i, value) {
+    if (!bilanTelCanWrite()) return;
+    const f = bilanTelForm();
+    if (!f || !f[section][i]) return;
+    f[section][i].date = value;
+    bilanTelSaveData();
+}
+
+async function bilanTelAddPhoto(section, i, input) {
+    if (!bilanTelCanWrite()) return;
+    const f = bilanTelForm();
+    if (!f || !input.files.length) return;
+    const urls = await uploadFilesToImgbb(input.files);
+    if (!f[section][i].photos) f[section][i].photos = [];
+    f[section][i].photos.push(...urls);
+    bilanTelSaveData();
+    bilanTelRenderEntries(section);
+}
+
+async function bilanTelDropPhoto(section, i, e) {
+    if (!bilanTelCanWrite()) return;
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    const f = bilanTelForm();
+    if (!f) return;
+    const urls = await uploadFilesToImgbb(e.dataTransfer.files);
+    if (!f[section][i].photos) f[section][i].photos = [];
+    f[section][i].photos.push(...urls);
+    bilanTelSaveData();
+    bilanTelRenderEntries(section);
+}
+
+function bilanTelDelPhoto(section, i, pi) {
+    if (!bilanTelCanWrite()) return;
+    const f = bilanTelForm();
+    if (!f) return;
+    f[section][i].photos.splice(pi, 1);
+    bilanTelSaveData();
+    bilanTelRenderEntries(section);
+}
+
+// ---- Officiers (même modèle visuel que "Agents concernés" / interrogatoire) ----
+// Chaque officier = { username, label } — username=null pour les entrées @pseudo libres (hors compte)
+function bilanTelOfficierChipHtml(o, i) {
+    const canWrite = bilanTelCanWrite();
+    const delBtn = canWrite ? `<button type="button" onclick="bilanTelRemoveOfficier(${i})" style="background:rgba(211,47,47,0.1);border:1px solid rgba(211,47,47,0.2);color:#ef5350;cursor:pointer;font-size:11px;padding:3px 7px;border-radius:6px;font-weight:700;margin-left:4px;">✕</button>` : '';
+    if (!o.username) {
+        return `<div style="background:linear-gradient(135deg,rgba(13,43,94,0.4),rgba(13,43,94,0.25));border:1px solid rgba(201,162,39,0.35);border-radius:10px;padding:8px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 2px 6px rgba(0,0,0,0.12);">
+            <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#0D2B5E,#1a4080);border:2px solid rgba(201,162,39,0.5);display:flex;align-items:center;justify-content:center;font-size:14px;color:#C9A227;flex-shrink:0;">👤</div>
+            <div style="font-size:13px;font-weight:700;color:#222;">${rapEsc(o.label)}</div>
+            ${delBtn}
+        </div>`;
+    }
+    const parts = o.label.split('|');
+    const grade = (parts[0]||'').trim();
+    const name = parts.slice(1).join('|').trim();
+    const initials = name.split(' ').filter(w=>w).map(w=>w[0]).slice(0,2).join('').toUpperCase() || '??';
+    return `<div style="background:linear-gradient(135deg,rgba(13,43,94,0.4),rgba(13,43,94,0.25));border:1px solid rgba(201,162,39,0.35);border-radius:10px;padding:8px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 2px 6px rgba(0,0,0,0.12);">
+        <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#0D2B5E,#1a4080);border:2px solid rgba(201,162,39,0.5);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#C9A227;flex-shrink:0;">${initials}</div>
+        <div>
+            <div style="font-size:10px;color:rgba(201,162,39,0.7);font-weight:700;letter-spacing:0.5px;text-transform:uppercase;">${rapEsc(grade)}</div>
+            <div style="font-size:13px;font-weight:700;color:#222;line-height:1.2;">${rapEsc(name)}</div>
+        </div>
+        ${delBtn}
+    </div>`;
+}
+
+function bilanTelRenderOfficiers() {
+    const chips = document.getElementById('bilanTelOfficiersChips');
+    const f = bilanTelForm();
+    if (!chips || !f) return;
+    if (!f.officiers) f.officiers = [];
+    chips.innerHTML = f.officiers.map((o, i) => bilanTelOfficierChipHtml(o, i)).join('')
+        || `<span style="font-size:13px;color:#888;font-style:italic;">Aucun officier sélectionné — accès en écriture réservé aux officiers assignés</span>`;
+    // Masquer les contrôles d'ajout si l'utilisateur n'a pas le droit d'écrire
+    const addWrap = document.getElementById('bilanTelOfficiersAddWrap');
+    if (addWrap) addWrap.style.display = bilanTelCanWrite() ? '' : 'none';
+    bilanTelRenderSignatures();
+}
+
+function bilanTelRenderSignatures() {
+    const wrap = document.getElementById('bilanTelSignaturesWrap');
+    const f = bilanTelForm();
+    if (!wrap || !f) return;
+    const officiers = f.officiers || [];
+    if (!officiers.length) { wrap.innerHTML = ''; return; }
+    wrap.innerHTML = officiers.map((o, i) => {
+        let grade = '', name = '';
+        if (o.username) {
+            const parts = (o.label || '').split('|');
+            grade = (parts[0] || '').trim();
+            name = parts.slice(1).join('|').trim();
+        } else {
+            name = (o.label || '').replace(/^@/, '');
+            grade = 'Agent';
+        }
+        // Légère rotation aléatoire (mais stable) pour un rendu "signé à la main"
+        const angle = (((name.length * 7 + i * 13) % 9) - 4) * 0.6;
+        return `<div class="m-signature-card">
+            <div class="m-signature-ink">
+                <div class="m-signature-script" style="transform:rotate(${angle}deg);">${rapEsc(name || '—')}</div>
+            </div>
+            <div class="m-signature-underline"></div>
+            <div class="m-signature-readable-name">${rapEsc(name)}</div>
+            <div class="m-signature-caps">${rapEsc(grade)}</div>
+        </div>`;
+    }).join('');
+}
+
+function bilanTelOfficierItemHtml(a, currentUsernames) {
+    const label = (a.grade||'') + ' | ' + (a.first_name||'') + ' ' + (a.last_name||'');
+    const checked = currentUsernames.includes(a.username) ? 'checked' : '';
+    const initials = [(a.first_name||'?')[0], (a.last_name||'?')[0]].join('').toUpperCase();
+    const gradeColors = {
+        'commanding': '#e74c3c', 'supervisor cid': '#9b59b6',
+        'master investigator': '#C9A227', 'sénior détective': '#3498db',
+        'senior detective': '#3498db', 'détective': '#2ecc71',
+        'detective': '#2ecc71'
+    };
+    const gradeColor = gradeColors[(a.grade||'').toLowerCase()] || '#aaa';
+    return `<label data-label="${label}" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;cursor:pointer;transition:background 0.12s;margin-bottom:2px;" onmouseover="this.style.background='rgba(201,162,39,0.1)'" onmouseout="this.style.background=''">
+        <input type="checkbox" value="${a.username}" data-label="${label}" ${checked} style="width:16px;height:16px;accent-color:#C9A227;cursor:pointer;flex-shrink:0;">
+        <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#0D2B5E,#1a4080);border:2px solid ${gradeColor};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:${gradeColor};flex-shrink:0;">${initials}</div>
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:10px;font-weight:700;color:${gradeColor};text-transform:uppercase;letter-spacing:0.5px;">${a.grade||''}</div>
+            <div style="font-size:13px;font-weight:600;color:#222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${(a.first_name||'')} ${(a.last_name||'')}</div>
+        </div>
+    </label>`;
+}
+
+async function bilanTelPopulateOfficiersList() {
+    if (!_editorAccountsCache.length) await loadEditorAccounts();
+    const list = document.getElementById('bilanTelOfficiersList');
+    const f = bilanTelForm();
+    if (!list || !f) return;
+    const current = (f.officiers || []).map(o => o.username).filter(Boolean);
+    list.innerHTML = _editorAccountsCache.map(a => bilanTelOfficierItemHtml(a, current)).join('')
+        || `<div style="font-size:12px;color:#888;font-style:italic;padding:6px;">Aucun compte enregistré</div>`;
+}
+
+function bilanTelFilterOfficiersDropdown(query) {
+    const list = document.getElementById('bilanTelOfficiersList');
+    if (!list) return;
+    const q = query.toLowerCase();
+    list.querySelectorAll('label[data-label]').forEach(el => {
+        el.style.display = el.dataset.label.toLowerCase().includes(q) ? '' : 'none';
+    });
+}
+
+function bilanTelToggleOfficiersDropdown() {
+    if (!bilanTelCanWrite()) return;
+    const dd = document.getElementById('bilanTelOfficiersDropdown');
+    const arrow = document.getElementById('bilanTelOfficiersArrow');
+    if (!dd) return;
+    const isOpen = dd.style.display !== 'none';
+    dd.style.display = isOpen ? 'none' : 'block';
+    if (arrow) arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
+    if (!isOpen) {
+        bilanTelPopulateOfficiersList();
+        setTimeout(() => { const s = document.getElementById('bilanTelOfficiersSearch'); if (s) { s.value = ''; s.focus(); } }, 80);
+    }
+}
+
+function bilanTelConfirmOfficiers() {
+    if (!bilanTelCanWrite()) return;
+    const dd = document.getElementById('bilanTelOfficiersDropdown');
+    const list = document.getElementById('bilanTelOfficiersList');
+    const f = bilanTelForm();
+    if (!f) return;
+    const checkedBoxes = [...(list||dd||document).querySelectorAll('input[type=checkbox]:checked')];
+    const memberEntries = checkedBoxes.map(cb => ({ username: cb.value, label: cb.dataset.label || cb.value }));
+    const customOnes = (f.officiers||[]).filter(o => !o.username);
+    f.officiers = [...memberEntries, ...customOnes];
+    bilanTelSaveData();
+    bilanTelRenderOfficiers();
+    if (dd) dd.style.display = 'none';
+    const arrow = document.getElementById('bilanTelOfficiersArrow');
+    if (arrow) arrow.style.transform = '';
+}
+
+function bilanTelAddCustomOfficier() {
+    if (!bilanTelCanWrite()) return;
+    const input = document.getElementById('bilanTelOfficiersCustomInput');
+    const f = bilanTelForm();
+    if (!input || !f) return;
+    let val = input.value.trim();
+    if (!val) return;
+    if (!val.startsWith('@')) val = '@' + val;
+    if (!f.officiers) f.officiers = [];
+    if (!f.officiers.some(o => o.label === val)) f.officiers.push({ username: null, label: val });
+    input.value = '';
+    bilanTelSaveData();
+    bilanTelRenderOfficiers();
+}
+
+function bilanTelRemoveOfficier(i) {
+    if (!bilanTelCanWrite()) return;
+    const f = bilanTelForm();
+    if (!f) return;
+    f.officiers.splice(i, 1);
+    bilanTelSaveData();
+    bilanTelRenderOfficiers();
+}
+
+// ---- Modal créer/renommer un bilanTel ----
+let _bilTelModalMode = null, _bilTelModalTargetId = null;
+function openBilanTelModal(mode, id=null, defaultVal='Mandat téléphonique — ') {
+    _bilTelModalMode = mode; _bilTelModalTargetId = id;
+    const modal = document.getElementById('bilanTelNameModal');
+    const inp = document.getElementById('bilanTelNameModalInput');
+    const title = document.getElementById('bilanTelNameModalTitle');
+    if (!modal) return;
+    title.textContent = mode === 'create' ? 'Créer un bilan téléphonique' : 'Renommer le bilan';
+    inp.value = defaultVal;
+    modal.classList.add('active');
+    setTimeout(() => inp.focus(), 100);
+}
+function closeBilanTelModal() {
+    const modal = document.getElementById('bilanTelNameModal');
+    if (modal) modal.classList.remove('active');
+    _bilTelModalMode = null; _bilTelModalTargetId = null;
+}
+async function confirmBilanTelModal() {
+    const name = document.getElementById('bilanTelNameModalInput').value.trim();
+    if (!name) { alert('Veuillez entrer un nom'); return; }
+    const mode = _bilTelModalMode, id = _bilTelModalTargetId;
+    closeBilanTelModal();
+    if (mode === 'create') await _doCreateBilanTel(name);
+    else if (mode === 'rename') await _doRenameBilanTel(id, name);
+}
+(function() {
+    const el = document.createElement('div');
+    el.innerHTML = `<div id="bilanTelNameModal" class="modal" onclick="if(event.target===this)closeBilanTelModal()">
+        <div class="modal-dialog">
+            <h2 id="bilanTelNameModalTitle">Créer un bilan téléphonique</h2>
+            <input type="text" id="bilanTelNameModalInput" placeholder="Nom du bilan">
+            <div class="modal-actions">
+                <button class="btn-confirm" onclick="confirmBilanTelModal()">Confirmer</button>
+                <button class="btn-cancel" onclick="closeBilanTelModal()">Annuler</button>
+            </div>
+        </div>
+    </div>`;
+    document.body.appendChild(el.firstElementChild);
+    document.getElementById('bilanTelNameModalInput').addEventListener('keydown', e => { if(e.key==='Enter') confirmBilanTelModal(); });
+})();
+
+
+
+
+// ---- Éditeur ----
 
 
 // ---- Éditeur ----
