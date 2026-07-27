@@ -1015,6 +1015,82 @@
             70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(211,47,47,0); }
             100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(211,47,47,0); }
         }
+
+        /* ===== NOTES DE VERSION (patch notes) ===== */
+        .patchnotes-tab {
+            position: fixed;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%) rotate(180deg);
+            writing-mode: vertical-rl;
+            background: linear-gradient(135deg, #0D2B5E, #1a4080);
+            color: #C9A227;
+            border: 1px solid rgba(201,162,39,0.4);
+            border-right: none;
+            border-radius: 8px 0 0 8px;
+            padding: 8px 5px;
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.6px;
+            cursor: pointer;
+            z-index: 500;
+            box-shadow: -3px 0 10px rgba(0,0,0,0.22);
+            transition: padding 0.15s ease, transform 0.15s ease;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            opacity: 0.85;
+        }
+        .patchnotes-tab:hover { padding-right: 8px; opacity: 1; background: linear-gradient(135deg, #123568, #1f4c96); }
+        .patchnotes-tab-dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: #e74c3c;
+            box-shadow: 0 0 0 rgba(231,76,60,0.6);
+            animation: pulse 1.8s infinite;
+            writing-mode: horizontal-tb;
+        }
+        .patchnotes-panel {
+            position: fixed;
+            right: -360px;
+            top: 0;
+            width: 340px;
+            height: 100vh;
+            background: linear-gradient(160deg, #0D2B5E, #0a2040);
+            border-left: 1px solid rgba(201,162,39,0.3);
+            box-shadow: -8px 0 30px rgba(0,0,0,0.4);
+            z-index: 600;
+            transition: right 0.28s cubic-bezier(.34,1.2,.64,1);
+            display: flex;
+            flex-direction: column;
+            font-family: inherit;
+        }
+        .patchnotes-panel.open { right: 0; }
+        .patchnotes-header {
+            padding: 18px 20px 14px;
+            border-bottom: 1px solid rgba(201,162,39,0.2);
+            display: flex; justify-content: space-between; align-items: center;
+            flex-shrink: 0;
+        }
+        .patchnotes-header h2 { color: #C9A227; font-size: 16px; font-weight: 900; margin: 0; }
+        .patchnotes-close {
+            background: rgba(211,47,47,0.15); color: #ef5350; border: none;
+            width: 28px; height: 28px; border-radius: 8px; cursor: pointer; font-size: 14px;
+        }
+        .patchnotes-body { flex: 1; overflow-y: auto; padding: 16px 20px 24px; }
+        .patchnotes-entry { margin-bottom: 22px; }
+        .patchnotes-entry-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+        .patchnotes-version {
+            background: rgba(201,162,39,0.18); color: #C9A227;
+            font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 20px;
+        }
+        .patchnotes-date { color: rgba(255,255,255,0.4); font-size: 11px; }
+        .patchnotes-entry ul { margin: 0; padding-left: 18px; }
+        .patchnotes-entry li { color: rgba(255,255,255,0.85); font-size: 13px; line-height: 1.6; margin-bottom: 4px; }
+        .patchnotes-entry:not(:last-child) { padding-bottom: 18px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+        @media (max-width: 768px) {
+            .patchnotes-panel { width: 88vw; right: -88vw; }
+            .patchnotes-tab { font-size: 9px; padding: 7px 4px; }
+        }
     </style>
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <meta name="referrer" content="no-referrer">
@@ -1023,6 +1099,18 @@
 
 <!-- sidebar removed -->
 
+<!-- ===== NOTES DE VERSION ===== -->
+<div class="patchnotes-tab" id="patchnotesTab" onclick="openPatchNotesPanel()">
+    <span class="patchnotes-tab-dot" id="patchnotesTabDot" style="display:none;"></span>
+    <span>🆕 Nouveautés</span>
+</div>
+<div class="patchnotes-panel" id="patchnotesPanel">
+    <div class="patchnotes-header">
+        <h2>🆕 Nouveautés du CID Panel</h2>
+        <button class="patchnotes-close" onclick="closePatchNotesPanel()">✕</button>
+    </div>
+    <div class="patchnotes-body" id="patchnotesBody"></div>
+</div>
 
 <!-- ===== QUICK ADMIN PANEL ===== -->
 <div id="quickAdminBtn" style="display:none;position:fixed;bottom:24px;right:24px;z-index:9000;">
@@ -1832,6 +1920,85 @@ async function sbUpsertSetting(key, value) {
     });
 }
 
+// ==================== NOTES DE VERSION (patch notes) ====================
+// Pense à ajouter une nouvelle entrée en HAUT de ce tableau à chaque mise à jour du panel.
+// "version" sert uniquement à savoir si l'utilisateur a déjà vu cette entrée (change-le à chaque ajout).
+const CID_PATCH_NOTES = [
+    {
+        version: '2026.07.3',
+        date: 'Juillet 2026',
+        items: [
+            "📱 Nouveau module : Mandat de perquisition téléphonique",
+            "🔍 Recherche par nom, mois ou agent sur toutes les listes de documents",
+            "📅 Les dossiers sont désormais regroupés par mois, avec possibilité de replier/déplier chaque mois",
+            "📤 Export direct vers Google Docs (Mandat, Injonction, Bilan, Rapport, Interrogatoire)",
+            "🔄 Mise à jour en temps réel : les listes et documents se rafraîchissent automatiquement quand quelqu'un d'autre modifie quelque chose",
+            "👥 Sélecteur d'agents (au lieu de taper les noms à la main) sur le Rapport, avec signatures automatiques",
+            "⚡ Site plus rapide : les sauvegardes n'envoient plus une requête à chaque lettre tapée"
+        ]
+    },
+    {
+        version: '2026.07.2',
+        date: 'Juillet 2026',
+        items: [
+            "🏠 Nouveaux modules : Injonction immobilière et Bilan de perquisition",
+            "🗑 Possibilité de retirer une photo dans l'organigramme (elle ne revient plus toute seule)",
+            "🎨 Cartes de dossiers plus compactes et plus lisibles"
+        ]
+    }
+];
+
+function _getLatestPatchVersion() {
+    return CID_PATCH_NOTES.length ? CID_PATCH_NOTES[0].version : null;
+}
+
+function renderPatchNotesBody() {
+    const body = document.getElementById('patchnotesBody');
+    if (!body) return;
+    body.innerHTML = CID_PATCH_NOTES.map((entry, i) => `
+        <div class="patchnotes-entry">
+            <div class="patchnotes-entry-header">
+                <span class="patchnotes-version">${entry.version}</span>
+                <span class="patchnotes-date">${entry.date}</span>
+                ${i === 0 ? '<span style="color:#e0b830;font-size:10px;font-weight:800;">• DERNIÈRE</span>' : ''}
+            </div>
+            <ul style="${i === 0 ? 'font-weight:700;' : ''}">${entry.items.map(it => `<li>${it}</li>`).join('')}</ul>
+        </div>
+    `).join('');
+}
+
+function openPatchNotesPanel() {
+    renderPatchNotesBody();
+    const panel = document.getElementById('patchnotesPanel');
+    if (panel) panel.classList.add('open');
+    const latest = _getLatestPatchVersion();
+    if (latest) localStorage.setItem('cid_patchnotes_seen', latest);
+    const dot = document.getElementById('patchnotesTabDot');
+    if (dot) dot.style.display = 'none';
+}
+
+function closePatchNotesPanel() {
+    const panel = document.getElementById('patchnotesPanel');
+    if (panel) panel.classList.remove('open');
+}
+
+// À la connexion : si l'utilisateur n'a jamais vu la dernière version des notes, on met un petit
+// point rouge sur l'onglet (et on ouvre automatiquement le panneau une seule fois, à la toute
+// première visite du site sur ce navigateur, sans gêner l'écran par la suite).
+function checkPatchNotesOnLogin() {
+    const latest = _getLatestPatchVersion();
+    if (!latest) return;
+    const seen = localStorage.getItem('cid_patchnotes_seen');
+    const neverVisited = localStorage.getItem('cid_patchnotes_first_visit_done') === null;
+    if (seen === latest) return;
+    const dot = document.getElementById('patchnotesTabDot');
+    if (dot) dot.style.display = 'inline-block';
+    if (neverVisited) {
+        localStorage.setItem('cid_patchnotes_first_visit_done', '1');
+        setTimeout(() => openPatchNotesPanel(), 1200);
+    }
+}
+
 // ==================== GROUPEMENT PAR MOIS (listes de dossiers/rapports/etc.) ====================
 const MONTH_NAMES_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
@@ -2147,6 +2314,7 @@ async function doLogin() {
         localStorage.setItem('cid_session', JSON.stringify(currentUser));
         showPage('pageAdmin');
         renderAdminPanel();
+        checkPatchNotesOnLogin();
         return;
     }
 
@@ -2161,6 +2329,7 @@ async function doLogin() {
         localStorage.setItem('cid_session', JSON.stringify(currentUser));
         showPage('pageDossiers');
         renderUserHeader();
+        checkPatchNotesOnLogin();
         setTimeout(async () => { try { await loadOrgMembersFromSupabase(); } catch(e){} try { await loadDocEditors(); } catch(e){} try { await loadDocumentsFromSupabase(); } catch(e){} try { await loadCarteData(); } catch(e){} renderUserHeader(); renderDossiersList(); renderInlineOrg(); try { syncOrgGradesFromAccounts(); } catch(e){} const docTab = document.getElementById('tabDocuments'); if(docTab) docTab.style.display = getPermLevel() === 'procureur' ? 'none' : ''; _applyCarteTabVisibility(); try { const savedTab = sessionStorage.getItem('cid_active_tab'); if (savedTab && savedTab !== 'dossiers') setTimeout(() => switchMainTab(savedTab), 400); } catch(e){} }, 300);
         setTimeout(() => checkPendingLink(), 300);
     } catch(e) { showMsg('loginMsg','Erreur: ' + e.message,'error'); }
@@ -3178,6 +3347,7 @@ window.addEventListener('load', async () => {
             currentUser = user;
             showPage('pageAdmin');
             renderAdminPanel();
+            checkPatchNotesOnLogin();
             return;
         }
 
@@ -3188,6 +3358,7 @@ window.addEventListener('load', async () => {
         if (acc && acc.status === 'approved') {
             currentUser = { username: acc.username, firstName: acc.first_name, lastName: acc.last_name, grade: acc.grade||'', role: 'user' };
             localStorage.setItem('cid_session', JSON.stringify(currentUser));
+            setTimeout(() => checkPatchNotesOnLogin(), 600);
 
             const pending = localStorage.getItem('cid_pending_link');
             if (pending) {
