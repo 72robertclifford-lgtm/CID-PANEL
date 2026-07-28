@@ -3292,7 +3292,7 @@ function renderFusillades() {
             <div>
                 <label style="font-size:12px;font-weight:700;color:var(--text2);display:block;margin-bottom:4px;">🔗 Liens (preuves, vidéos, rapports...)</label>
                 <textarea oninput="fusillades[${i}].liens=this.value;saveData()" placeholder="Collez vos liens ici, un par ligne..." style="width:100%;min-height:80px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;font-weight:600;background:var(--input-bg);color:var(--text);resize:vertical;">${f.liens||''}</textarea>
-                ${(f.liens||'').trim() ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">${(f.liens||'').split('\n').filter(l=>l.trim().startsWith('http')).map(l=>`<a href="${l.trim()}" target="_blank" style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.25);border-radius:6px;color:#C9A227;font-size:11px;font-weight:600;text-decoration:none;">🔗 Ouvrir</a>`).join('')}</div>` : ''}
+                ${(f.liens||'').trim() ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">${(f.liens||'').split('\n').filter(l=>l.trim().startsWith('http')).map(l=>{const u=l.trim();const short=u.length>34?u.slice(0,31)+'…':u;return `<a href="${u}" target="_blank" title="${u}" onmouseenter="showLinkPreview(event,'${u.replace(/'/g,"\\'")}')" onmousemove="positionLinkPreview(event)" onmouseleave="hideLinkPreview()" style="display:inline-flex;align-items:center;gap:5px;max-width:220px;padding:4px 10px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.25);border-radius:6px;color:#C9A227;font-size:10.5px;font-weight:600;text-decoration:none;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">🔗 ${short}</a>`;}).join('')}</div>` : ''}
             </div>
             <button class="btn-delete-row" onclick="fusillades.splice(${i},1);renderFusillades();saveData()" style="margin-top:10px;">Supprimer</button>
         </div>
@@ -3302,6 +3302,84 @@ function renderFusillades() {
 // ===== HELPERS =====
 function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));const el=document.getElementById(id);if(el){el.classList.add('active');el.scrollTop=0;}window.scrollTo(0,0);if(id==='pageOrgChart')renderOrgChart();}
 function openPhoto(src){if(src){document.getElementById('modalImage').src=src;document.getElementById('photoModal').classList.add('active');}}
+
+// ===== APERÇU AU SURVOL DES LIENS (dossier — fusillades) =====
+function _linkPreviewContent(url) {
+    let host = '';
+    try { host = new URL(url).hostname.replace(/^www\./, ''); } catch(e) { host = url; }
+    // YouTube : vraie vignette de la vidéo (aucune requête bloquée par CORS)
+    const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{6,})/);
+    if (yt) {
+        return `<img src="https://img.youtube.com/vi/${yt[1]}/hqdefault.jpg" style="width:100%;display:block;border-radius:8px 8px 0 0;">
+            <div style="padding:8px 10px;font-size:11px;color:#fff;">▶️ YouTube</div>`;
+    }
+    // Image directe (imgbb, etc.)
+    if (/\.(jpe?g|png|webp|gif)(\?.*)?$/i.test(url) || host.includes('ibb.co')) {
+        return `<img src="${url}" style="width:100%;max-height:160px;object-fit:cover;display:block;border-radius:8px 8px 0 0;">
+            <div style="padding:8px 10px;font-size:11px;color:#fff;">🖼️ Image</div>`;
+    }
+    if (host.includes('docs.google.com')) {
+        const kind = url.includes('/spreadsheets/') ? { icon: '📊', label: 'Google Sheets', color: '#188038' }
+            : url.includes('/presentation/') ? { icon: '📽️', label: 'Google Slides', color: '#e37400' }
+            : { icon: '📄', label: 'Google Docs', color: '#4285f4' };
+        return `<div style="padding:16px 14px;text-align:center;">
+            <div style="font-size:34px;margin-bottom:6px;">${kind.icon}</div>
+            <div style="font-size:12px;font-weight:700;color:${kind.color};">${kind.label}</div>
+        </div>`;
+    }
+    if (host.includes('discord.com') || host.includes('discord.gg')) {
+        return `<div style="padding:16px 14px;text-align:center;">
+            <div style="font-size:34px;margin-bottom:6px;">💬</div>
+            <div style="font-size:12px;font-weight:700;color:#5865F2;">Discord</div>
+        </div>`;
+    }
+    return `<div style="padding:16px 14px;text-align:center;">
+        <div style="font-size:34px;margin-bottom:6px;">🔗</div>
+        <div style="font-size:12px;font-weight:700;color:#ccc;">Lien externe</div>
+    </div>`;
+}
+
+function showLinkPreview(event, url) {
+    if (!url) return;
+    let host = '';
+    try { host = new URL(url).hostname.replace(/^www\./, ''); } catch(e) { host = ''; }
+    let tip = document.getElementById('linkPreviewTooltip');
+    if (!tip) {
+        tip = document.createElement('div');
+        tip.id = 'linkPreviewTooltip';
+        tip.style.cssText = 'position:fixed;z-index:99999;width:220px;background:#1a1a1a;border:1px solid rgba(201,162,39,0.4);border-radius:10px;box-shadow:0 12px 28px rgba(0,0,0,0.45);overflow:hidden;pointer-events:none;';
+        document.body.appendChild(tip);
+    }
+    tip.innerHTML = _linkPreviewContent(url) + (host ? `<div style="padding:5px 10px 8px;font-size:10px;color:rgba(255,255,255,0.45);border-top:1px solid rgba(255,255,255,0.08);word-break:break-all;">${host}</div>` : '');
+    positionLinkPreview(event);
+    tip.style.display = 'block';
+}
+function positionLinkPreview(event) {
+    const tip = document.getElementById('linkPreviewTooltip');
+    if (!tip || !event) return;
+    const margin = 14;
+    let left = event.clientX + margin;
+    let top = event.clientY + margin;
+    if (left + 220 > window.innerWidth) left = event.clientX - 220 - margin;
+    if (top + 180 > window.innerHeight) top = event.clientY - 180 - margin;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+}
+function hideLinkPreview() {
+    const tip = document.getElementById('linkPreviewTooltip');
+    if (tip) tip.style.display = 'none';
+}
+
+// Détecte un lien dans un texte libre (champ "preuve", description, etc.) et affiche une petite
+// icône à côté, avec le même aperçu au survol que pour les Fusillades. Utilisable partout sur le site.
+function _linkIconIfUrl(text) {
+    if (!text) return '';
+    const m = text.match(/https?:\/\/[^\s]+/);
+    if (!m) return '';
+    const u = m[0];
+    return `<a href="${u}" target="_blank" title="${u}" onmouseenter="showLinkPreview(event,'${u.replace(/'/g,"\\'")}')" onmousemove="positionLinkPreview(event)" onmouseleave="hideLinkPreview()" style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;flex-shrink:0;background:rgba(201,162,39,0.12);border:1px solid rgba(201,162,39,0.3);border-radius:6px;text-decoration:none;font-size:12px;">🔗</a>`;
+}
+
 function showSuccessDossiers(msg, duration=3000){const el=document.getElementById('successMsgDossiers');el.textContent='✓ '+msg;el.style.display='block';setTimeout(()=>el.style.display='none',duration);}
 function showSuccessEditor(msg){const el=document.getElementById('successMsgEditor');el.textContent=msg;el.style.display='block';setTimeout(()=>el.style.display='none',4000);}
 
@@ -6055,6 +6133,7 @@ function renderDocumentsTab() {
                 html += ' onmouseover="this.style.borderColor=\'rgba(201,162,39,0.4)\';this.style.background=\'rgba(13,43,94,0.7)\'"';
                 html += ' onmouseout="this.style.borderColor=\'rgba(201,162,39,0.15)\';this.style.background=\'rgba(13,43,94,0.5)\'"';
                 let _onclick;
+                let _previewAttrs = '';
                 if (doc.linkType === 'interrogatoire') {
                     _onclick = "openDocLink('interro','internal')";
                 } else if (doc.linkType === 'rapport') {
@@ -6086,9 +6165,10 @@ function renderDocumentsTab() {
                         else if (_bid) _onclick = "openDocLink('bilan','" + _bid + "')";
                         else if (_tid) _onclick = "openDocLink('telephonique','" + _tid + "')";
                         else if (_btid) _onclick = "openDocLink('bilanTel','" + _btid + "')";
-                        else _onclick = "window.open('" + doc.url.replace(/'/g,"\'") + "','_blank')";
+                        else { _onclick = "window.open('" + doc.url.replace(/'/g,"\'") + "','_blank')"; _previewAttrs = ' onmouseenter="showLinkPreview(event,\'' + doc.url.replace(/'/g,"\\'") + '\')" onmousemove="positionLinkPreview(event)" onmouseleave="hideLinkPreview()"'; }
                     } catch(e) { _onclick = "window.open('" + doc.url + "','_blank')"; }
                 }
+                html += _previewAttrs;
                 html += ' onclick="' + _onclick + '">';
                 html += '<div style="width:42px;height:42px;border-radius:10px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.2);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">' + icon + '</div>';
                 html += '<div style="flex:1;min-width:0;">';
@@ -9112,6 +9192,7 @@ function mandatRenderEntries() {
                 <span class="m-pin">📌</span>
                 <input type="text" class="m-entry-date" value="${rapEsc(entry.date)}" oninput="mandatEntryDateField(${i},this.value)" title="Cliquez pour modifier la date" ${canWrite?'':'readonly'}>
                 <input type="text" class="m-entry-text" value="${rapEsc(entry.text)}" placeholder="Description de l'information..." oninput="mandatEntryField(${i},this.value)" ${canWrite?'':'readonly'}>
+                ${_linkIconIfUrl(entry.text)}
                 ${canWrite ? `<button class="m-entry-del" onclick="mandatDelEntry(${i})" title="Supprimer">✕</button>` : ''}
             </div>
             ${canWrite ? `
@@ -9937,6 +10018,7 @@ function injonctionRenderEntries() {
                 <span class="m-pin">📌</span>
                 <input type="text" class="m-entry-date" value="${rapEsc(entry.date)}" oninput="injonctionEntryDateField(${i},this.value)" title="Cliquez pour modifier la date" ${canWrite?'':'readonly'}>
                 <input type="text" class="m-entry-text" value="${rapEsc(entry.text)}" placeholder="Description de l'information..." oninput="injonctionEntryField(${i},this.value)" ${canWrite?'':'readonly'}>
+                ${_linkIconIfUrl(entry.text)}
                 ${canWrite ? `<button class="m-entry-del" onclick="injonctionDelEntry(${i})" title="Supprimer">✕</button>` : ''}
             </div>
             ${canWrite ? `
@@ -10643,6 +10725,7 @@ function bilanRenderEntries(si) {
                 <span class="m-pin">📌</span>
                 <input type="text" class="m-entry-date" value="${rapEsc(entry.date)}" oninput="bilanEntryDateField(${si},${i},this.value)" title="Cliquez pour modifier la date" ${canWrite?'':'readonly'}>
                 <input type="text" class="m-entry-text" value="${rapEsc(entry.text)}" placeholder="Description de la saisie..." oninput="bilanEntryField(${si},${i},this.value)" ${canWrite?'':'readonly'}>
+                ${_linkIconIfUrl(entry.text)}
                 ${canWrite ? `<button class="m-entry-del" onclick="bilanDelEntry(${si},${i})" title="Supprimer">✕</button>` : ''}
             </div>
             ${canWrite ? `
@@ -11356,6 +11439,7 @@ function telephoniqueRenderEntries() {
                 <span class="m-pin">📌</span>
                 <input type="text" class="m-entry-date" value="${rapEsc(entry.date)}" oninput="telephoniqueEntryDateField(${i},this.value)" title="Cliquez pour modifier la date" ${canWrite?'':'readonly'}>
                 <input type="text" class="m-entry-text" value="${rapEsc(entry.text)}" placeholder="Description de l'information..." oninput="telephoniqueEntryField(${i},this.value)" ${canWrite?'':'readonly'}>
+                ${_linkIconIfUrl(entry.text)}
                 ${canWrite ? `<button class="m-entry-del" onclick="telephoniqueDelEntry(${i})" title="Supprimer">✕</button>` : ''}
             </div>
             ${canWrite ? `
@@ -12046,6 +12130,7 @@ function bilanTelRenderEntries(section) {
                 <span class="m-pin">📌</span>
                 <input type="text" class="m-entry-date" value="${rapEsc(entry.date)}" oninput="bilanTelEntryDateField('${section}',${i},this.value)" title="Cliquez pour modifier la date" ${canWrite?'':'readonly'}>
                 <input type="text" class="m-entry-text" value="${rapEsc(entry.text)}" placeholder="Description..." oninput="bilanTelEntryField('${section}',${i},this.value)" ${canWrite?'':'readonly'}>
+                ${_linkIconIfUrl(entry.text)}
                 ${canWrite ? `<button class="m-entry-del" onclick="bilanTelDelEntry('${section}',${i})" title="Supprimer">✕</button>` : ''}
             </div>
             ${canWrite ? `
