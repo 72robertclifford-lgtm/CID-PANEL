@@ -1188,6 +1188,44 @@
     </div>
 </div>
 
+<!-- FORGOT PASSWORD MODAL (étape 1 : demande + code) -->
+<div id="forgotPasswordModal" class="modal" onclick="if(event.target===this)closeForgotPasswordModal()">
+    <div class="modal-dialog">
+        <h2>🔑 Mot de passe oublié</h2>
+        <div id="fpStep1">
+            <p style="font-size:13px;color:var(--text2);margin:0 0 12px;">Entre ton nom d'utilisateur pour générer un code de vérification.</p>
+            <input type="text" id="fpUsername" placeholder="ex: j.moreau" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);margin-bottom:12px;box-sizing:border-box;">
+            <div id="fpMsg" class="auth-msg"></div>
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeForgotPasswordModal()">Annuler</button>
+                <button class="btn-confirm" onclick="submitForgotPasswordRequest()">Générer mon code</button>
+            </div>
+        </div>
+        <div id="fpStep2" style="display:none;">
+            <p style="font-size:13px;color:var(--text2);margin:0 0 14px;">Voici ton code de vérification :</p>
+            <div id="fpCodeDisplay" style="text-align:center;font-size:28px;font-weight:900;letter-spacing:6px;color:#C9A227;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.3);border-radius:10px;padding:14px;margin-bottom:14px;"></div>
+            <p style="font-size:13px;color:var(--text2);line-height:1.6;margin:0 0 16px;">📩 Envoie ce code <b>en message privé à un administrateur sur Discord</b>. Une fois qu'il aura vérifié ton identité, il te renverra un lien pour choisir un nouveau mot de passe.</p>
+            <div class="modal-actions">
+                <button class="btn-confirm" onclick="closeForgotPasswordModal()">Compris</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- RESET PASSWORD MODAL (étape finale : lien reçu de l'admin) -->
+<div id="resetPasswordModal" class="modal">
+    <div class="modal-dialog">
+        <h2>🔓 Choisir un nouveau mot de passe</h2>
+        <p id="resetPwUserLabel" style="font-size:13px;color:var(--text2);margin:0 0 12px;"></p>
+        <input type="password" id="resetPwNew" placeholder="Nouveau mot de passe" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);margin-bottom:10px;box-sizing:border-box;">
+        <input type="password" id="resetPwConfirm" placeholder="Confirme le mot de passe" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);margin-bottom:12px;box-sizing:border-box;">
+        <div id="resetPwMsg" class="auth-msg"></div>
+        <div class="modal-actions">
+            <button class="btn-confirm" onclick="submitNewPassword()">Valider le nouveau mot de passe</button>
+        </div>
+    </div>
+</div>
+
 <!-- ===== PAGE LOGIN ===== -->
 <div id="pageAuth" class="page active">
     <div class="auth-wrap">
@@ -1214,6 +1252,9 @@
                     <input type="password" id="loginPassword" placeholder="••••••••">
                 </div>
                 <button class="btn-auth" onclick="doLogin()">Se connecter</button>
+                <div style="text-align:center;margin-top:12px;">
+                    <span onclick="openForgotPasswordModal()" style="color:#C9A227;font-size:12.5px;cursor:pointer;text-decoration:underline;">Mot de passe oublié ?</span>
+                </div>
             </div>
 
             <!-- REGISTER -->
@@ -1279,6 +1320,12 @@
             <span>🛡️</span>
             <h2>Panneau Administrateur <span class="admin-badge">ADMIN</span></h2>
             <button class="btn-logout" onclick="doLogout()">⬅ Déconnexion</button>
+        </div>
+
+        <div class="admin-section">
+            <h3>🔑 Demandes de réinitialisation de mot de passe <span id="passwordResetBadge" style="display:none;background:#e74c3c;color:#fff;font-size:11px;font-weight:800;padding:2px 8px;border-radius:20px;margin-left:6px;"></span></h3>
+            <p style="font-size:12px;color:var(--text3);margin:-6px 0 10px;">Demande un code au joueur en message privé sur Discord et vérifie-le ici avant d'envoyer le lien de changement.</p>
+            <div id="passwordResetRequestsPanel"></div>
         </div>
 
         <div class="admin-section">
@@ -1820,6 +1867,9 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 // Une fois le Worker Cloudflare créé (voir cid-panel-worker.js), remplace cette valeur
 // par ex: 'https://cid-panel.TON-PSEUDO.workers.dev' pour que les aperçus Discord
 // affichent le bon nom. Laisse vide ('') pour utiliser l'adresse actuelle automatiquement.
+// Une fois le Worker Cloudflare (cid-panel-og-worker.js) déployé, colle son URL ici
+// (ex: 'https://cid-panel-og.tonpseudo.workers.dev') pour que tous les liens copiés
+// passent par lui — les aperçus Discord/etc. deviendront alors dynamiques.
 const SHARE_BASE_URL = '';
 function getShareBaseUrl() {
     if (SHARE_BASE_URL) return SHARE_BASE_URL.replace(/\/$/, '');
@@ -1925,6 +1975,137 @@ async function sbUpsertSetting(key, value) {
         },
         body: JSON.stringify({ key, value })
     });
+}
+
+// ==================== RÉINITIALISATION DE MOT DE PASSE ====================
+let _passwordResetRequests = [];
+
+async function loadPasswordResetRequests() {
+    try {
+        const rows = await sbFetch('org_settings?key=eq.password_reset_requests&select=value');
+        _passwordResetRequests = (rows && rows[0]) ? JSON.parse(rows[0].value || '[]') : [];
+    } catch(e) { _passwordResetRequests = []; }
+}
+async function savePasswordResetRequests() {
+    await sbUpsertSetting('password_reset_requests', JSON.stringify(_passwordResetRequests));
+}
+
+function openForgotPasswordModal() {
+    document.getElementById('fpStep1').style.display = '';
+    document.getElementById('fpStep2').style.display = 'none';
+    document.getElementById('fpUsername').value = '';
+    document.getElementById('fpMsg').textContent = '';
+    document.getElementById('forgotPasswordModal').classList.add('active');
+}
+function closeForgotPasswordModal() {
+    document.getElementById('forgotPasswordModal').classList.remove('active');
+}
+
+async function submitForgotPasswordRequest() {
+    const username = document.getElementById('fpUsername').value.trim();
+    const msg = document.getElementById('fpMsg');
+    if (!username) { msg.textContent = 'Entre ton nom d\'utilisateur.'; msg.className = 'auth-msg error'; return; }
+    msg.textContent = 'Vérification...'; msg.className = 'auth-msg pending';
+    try {
+        const acc = await sb.getAccount(username);
+        if (!acc) { msg.textContent = 'Aucun compte trouvé avec ce nom d\'utilisateur.'; msg.className = 'auth-msg error'; return; }
+        await loadPasswordResetRequests();
+        const code = String(Math.floor(100000 + Math.random() * 900000));
+        // On retire toute ancienne demande en attente pour ce compte avant d'en créer une nouvelle
+        _passwordResetRequests = _passwordResetRequests.filter(r => r.username !== username || r.status !== 'pending');
+        _passwordResetRequests.push({
+            id: Date.now().toString(),
+            username,
+            code,
+            status: 'pending',
+            requestedAt: new Date().toLocaleString('fr-FR')
+        });
+        await savePasswordResetRequests();
+        document.getElementById('fpCodeDisplay').textContent = code;
+        document.getElementById('fpStep1').style.display = 'none';
+        document.getElementById('fpStep2').style.display = '';
+    } catch(e) {
+        msg.textContent = 'Erreur : ' + e.message; msg.className = 'auth-msg error';
+    }
+}
+
+// ---- Côté admin : voir/valider les demandes ----
+async function renderPasswordResetRequestsPanel() {
+    const container = document.getElementById('passwordResetRequestsPanel');
+    if (!container) return;
+    await loadPasswordResetRequests();
+    const pending = _passwordResetRequests.filter(r => r.status === 'pending');
+    if (!pending.length) {
+        container.innerHTML = `<p style="font-size:12.5px;color:var(--text3);">Aucune demande en attente.</p>`;
+        return;
+    }
+    container.innerHTML = pending.map(r => `
+        <div style="background:rgba(201,162,39,0.08);border:1px solid rgba(201,162,39,0.25);border-radius:10px;padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+            <div>
+                <div style="font-weight:700;font-size:13.5px;">@${rapEsc(r.username)}</div>
+                <div style="font-size:11px;color:var(--text3);">⏰ Demandé le ${rapEsc(r.requestedAt)}</div>
+            </div>
+            <button onclick="approvePasswordReset('${r.id}')" style="background:linear-gradient(135deg,#C9A227,#e0b830);color:#0D2B5E;border:none;border-radius:8px;padding:8px 14px;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap;">🔑 Vérifier le code</button>
+        </div>
+    `).join('');
+}
+
+async function approvePasswordReset(requestId) {
+    await loadPasswordResetRequests();
+    const req = _passwordResetRequests.find(r => r.id === requestId);
+    if (!req) { alert('Demande introuvable (peut-être déjà traitée).'); return; }
+    const entered = prompt(`Code que @${req.username} t'a envoyé en message privé sur Discord :`);
+    if (entered === null) return;
+    if (entered.trim() !== req.code) {
+        alert('❌ Le code ne correspond pas. Vérifie bien avec le joueur avant de continuer.');
+        return;
+    }
+    const token = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2, '0')).join('');
+    req.status = 'approved';
+    req.token = token;
+    req.approvedAt = new Date().toLocaleString('fr-FR');
+    await savePasswordResetRequests();
+    const link = `${getShareBaseUrl()}?resetpw=${token}`;
+    prompt(`✅ Code validé ! Envoie ce lien à @${req.username} sur Discord pour qu'il/elle choisisse un nouveau mot de passe :`, link);
+    renderPasswordResetRequestsPanel();
+}
+
+// ---- Étape finale : la personne clique le lien reçu et choisit un nouveau mot de passe ----
+let _activeResetRequestId = null;
+async function checkResetPasswordLink() {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('resetpw');
+    if (!token) return;
+    window.history.replaceState({}, '', window.location.pathname);
+    await loadPasswordResetRequests();
+    const req = _passwordResetRequests.find(r => r.token === token && r.status === 'approved');
+    if (!req) { alert("Ce lien de réinitialisation n'est plus valide (déjà utilisé ou expiré)."); return; }
+    _activeResetRequestId = req.id;
+    document.getElementById('resetPwUserLabel').textContent = `Compte : @${req.username}`;
+    document.getElementById('resetPwNew').value = '';
+    document.getElementById('resetPwConfirm').value = '';
+    document.getElementById('resetPwMsg').textContent = '';
+    document.getElementById('resetPasswordModal').classList.add('active');
+}
+
+async function submitNewPassword() {
+    const msg = document.getElementById('resetPwMsg');
+    const req = _passwordResetRequests.find(r => r.id === _activeResetRequestId);
+    if (!req) { msg.textContent = 'Session expirée, redemande un lien.'; msg.className = 'auth-msg error'; return; }
+    const pw1 = document.getElementById('resetPwNew').value;
+    const pw2 = document.getElementById('resetPwConfirm').value;
+    if (!pw1 || pw1.length < 4) { msg.textContent = 'Mot de passe trop court (4 caractères minimum).'; msg.className = 'auth-msg error'; return; }
+    if (pw1 !== pw2) { msg.textContent = 'Les deux mots de passe ne correspondent pas.'; msg.className = 'auth-msg error'; return; }
+    msg.textContent = 'Mise à jour...'; msg.className = 'auth-msg pending';
+    try {
+        await sb.updateAccount(req.username, { password: pw1 });
+        req.status = 'used';
+        await savePasswordResetRequests();
+        document.getElementById('resetPasswordModal').classList.remove('active');
+        alert('✅ Mot de passe changé avec succès ! Tu peux maintenant te connecter.');
+    } catch(e) {
+        msg.textContent = 'Erreur : ' + e.message; msg.className = 'auth-msg error';
+    }
 }
 
 // ==================== NOTES DE VERSION (patch notes) ====================
@@ -2395,6 +2576,11 @@ function doLogout() {
 // ===== ADMIN =====
 async function renderAdminPanel() {
     await syncOrgGradesFromAccounts();
+    renderPasswordResetRequestsPanel().then(() => {
+        const pendingCount = _passwordResetRequests.filter(r => r.status === 'pending').length;
+        const badge = document.getElementById('passwordResetBadge');
+        if (badge) { badge.style.display = pendingCount ? 'inline-block' : 'none'; badge.textContent = pendingCount; }
+    });
     try {
         const accounts = await sb.getAccounts();
         const gradeOrder = ['Commanding','Supervisor CID','Master Investigator','Sénior Détective','Détective','Procureur','Command Staff',''];
@@ -3397,6 +3583,8 @@ window.addEventListener('load', async () => {
         const btn=document.getElementById('darkToggle');
         if(btn) btn.textContent='☀️';
     }
+
+    checkResetPasswordLink();
 
     const params = new URLSearchParams(window.location.search);
     const linkDossierId = params.get('dossier');
