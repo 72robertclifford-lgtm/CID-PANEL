@@ -2984,15 +2984,21 @@ async function uploadToImgbb(file) {
     // On redessine systématiquement l'image via un canvas avant l'envoi : ça élimine les formats/
     // encodages exotiques (HEIC, profils de couleur particuliers, PNG mal formés...) qui font parfois
     // échouer ImgBB avec une "Internal upload error" sans rapport avec la clé API elle-même.
+    // JPEG plutôt que PNG : fichier beaucoup plus léger, envoi plus rapide et plus fiable
+    // (un PNG trop lourd peut faire échouer la requête, ce que le navigateur affiche parfois
+    // à tort comme une erreur CORS).
     let uploadBlob = file;
     try {
         const bitmap = await createImageBitmap(file);
         const canvas = document.createElement('canvas');
         canvas.width = bitmap.width;
         canvas.height = bitmap.height;
-        canvas.getContext('2d').drawImage(bitmap, 0, 0);
-        const pngBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-        if (pngBlob) uploadBlob = pngBlob;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff'; // fond blanc si l'image d'origine avait de la transparence
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(bitmap, 0, 0);
+        const jpegBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.87));
+        if (jpegBlob) uploadBlob = jpegBlob;
     } catch(e) {
         console.warn('Conversion image échouée, envoi du fichier original :', e);
     }
@@ -3027,6 +3033,11 @@ async function uploadToImgbb(file) {
             lastError = e;
         }
         if (attempt < 3) await new Promise(r => setTimeout(r, 800 * attempt));
+    }
+    // Un échec réseau (souvent affiché à tort comme une erreur CORS dans la console) vient
+    // généralement d'une connexion coupée pendant l'envoi ou d'un blocage ponctuel côté ImgBB.
+    if (lastError && /fetch/i.test(lastError.message || '')) {
+        throw new Error("Impossible d'envoyer l'image (connexion interrompue ou service temporairement indisponible). Réessaie dans quelques instants.");
     }
     throw lastError;
 }
