@@ -3003,6 +3003,19 @@ async function uploadToImgbb(file) {
         console.warn('Conversion image échouée, envoi du fichier original :', e);
     }
 
+    // catbox.moe en premier : aucune clé requise, et évite le blocage réseau que certains
+    // rencontrent spécifiquement sur le domaine imgbb.com.
+    try {
+        const catboxForm = new FormData();
+        catboxForm.append('reqtype', 'fileupload');
+        catboxForm.append('fileToUpload', uploadBlob, (file.name || 'cid_photo') + '.jpg');
+        const resCatbox = await fetch('https://catbox.moe/user/api.php', { method: 'POST', body: catboxForm });
+        const urlCatbox = (await resCatbox.text()).trim();
+        if (resCatbox.ok && urlCatbox.startsWith('http')) return urlCatbox;
+    } catch(eCatbox) {
+        console.warn('catbox.moe indisponible, tentative via ImgBB...', eCatbox);
+    }
+
     const base64 = await new Promise((resolve, reject) => {
         const r = new FileReader();
         r.onload = e => {
@@ -3035,24 +3048,10 @@ async function uploadToImgbb(file) {
         if (attempt < 3) await new Promise(r => setTimeout(r, 800 * attempt));
     }
 
-    // ImgBB indisponible (bloqué par le réseau, panne, etc.) : on tente un service de secours
-    // (catbox.moe, aucune clé requise) avant d'abandonner complètement.
-    console.warn('ImgBB a échoué après 3 tentatives, essai via le service de secours (catbox.moe)...', lastError);
-    try {
-        const fallbackForm = new FormData();
-        fallbackForm.append('reqtype', 'fileupload');
-        fallbackForm.append('fileToUpload', uploadBlob, (file.name || 'cid_photo') + '.jpg');
-        const res2 = await fetch('https://catbox.moe/user/api.php', { method: 'POST', body: fallbackForm });
-        const url2 = (await res2.text()).trim();
-        if (res2.ok && url2.startsWith('http')) return url2;
-    } catch(e2) {
-        console.warn('Service de secours également indisponible :', e2);
-    }
-
     // Un échec réseau (souvent affiché à tort comme une erreur CORS dans la console) vient
-    // généralement d'une connexion coupée pendant l'envoi ou d'un blocage ponctuel côté ImgBB.
+    // généralement d'une connexion coupée pendant l'envoi, ou d'un blocage réseau de ce domaine.
     if (lastError && /fetch/i.test(lastError.message || '')) {
-        throw new Error("Impossible d'envoyer l'image (connexion interrompue, ou ImgBB/le service de secours sont temporairement indisponibles/bloqués sur ce réseau). Réessaie dans quelques instants, ou depuis une autre connexion.");
+        throw new Error("Impossible d'envoyer l'image (connexion interrompue, ou les hébergeurs d'images sont bloqués sur ce réseau). Réessaie depuis une autre connexion (ex: données mobiles).");
     }
     throw lastError;
 }
