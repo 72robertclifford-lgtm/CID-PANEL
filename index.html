@@ -3034,10 +3034,25 @@ async function uploadToImgbb(file) {
         }
         if (attempt < 3) await new Promise(r => setTimeout(r, 800 * attempt));
     }
+
+    // ImgBB indisponible (bloqué par le réseau, panne, etc.) : on tente un service de secours
+    // (catbox.moe, aucune clé requise) avant d'abandonner complètement.
+    console.warn('ImgBB a échoué après 3 tentatives, essai via le service de secours (catbox.moe)...', lastError);
+    try {
+        const fallbackForm = new FormData();
+        fallbackForm.append('reqtype', 'fileupload');
+        fallbackForm.append('fileToUpload', uploadBlob, (file.name || 'cid_photo') + '.jpg');
+        const res2 = await fetch('https://catbox.moe/user/api.php', { method: 'POST', body: fallbackForm });
+        const url2 = (await res2.text()).trim();
+        if (res2.ok && url2.startsWith('http')) return url2;
+    } catch(e2) {
+        console.warn('Service de secours également indisponible :', e2);
+    }
+
     // Un échec réseau (souvent affiché à tort comme une erreur CORS dans la console) vient
     // généralement d'une connexion coupée pendant l'envoi ou d'un blocage ponctuel côté ImgBB.
     if (lastError && /fetch/i.test(lastError.message || '')) {
-        throw new Error("Impossible d'envoyer l'image (connexion interrompue ou service temporairement indisponible). Réessaie dans quelques instants.");
+        throw new Error("Impossible d'envoyer l'image (connexion interrompue, ou ImgBB/le service de secours sont temporairement indisponibles/bloqués sur ce réseau). Réessaie dans quelques instants, ou depuis une autre connexion.");
     }
     throw lastError;
 }
