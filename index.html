@@ -2969,8 +2969,10 @@ function metaLabel(key) {
 
 
 
-// ===== IMGBB UPLOAD =====
+// ===== UPLOAD D'IMAGES (Cloudinary en principal, ImgBB puis catbox.moe en secours) =====
 const IMGBB_KEY = 'dd7e23b5f4f91dfbf1fb3123847ddc08';
+const CLOUDINARY_CLOUD_NAME = 'ohh4mvry';
+const CLOUDINARY_UPLOAD_PRESET = 'cid_panel';
 
 async function uploadToImgbb(file) {
     if (!file || !file.size) {
@@ -3001,6 +3003,20 @@ async function uploadToImgbb(file) {
         if (jpegBlob) uploadBlob = jpegBlob;
     } catch(e) {
         console.warn('Conversion image échouée, envoi du fichier original :', e);
+    }
+
+    // Cloudinary en premier : hébergeur d'images fiable et robuste (plan gratuit).
+    // Les anciennes photos restent hébergées sur ImgBB/catbox, seules les nouvelles passent par ici.
+    try {
+        const cloudForm = new FormData();
+        cloudForm.append('file', uploadBlob);
+        cloudForm.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+        const resCloud = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, { method: 'POST', body: cloudForm });
+        const dataCloud = await resCloud.json();
+        if (resCloud.ok && dataCloud.secure_url) return dataCloud.secure_url;
+        console.warn('Cloudinary a refusé l\'upload, tentative via ImgBB...', dataCloud);
+    } catch(eCloud) {
+        console.warn('Cloudinary indisponible, tentative via ImgBB...', eCloud);
     }
 
     const base64 = await new Promise((resolve, reject) => {
