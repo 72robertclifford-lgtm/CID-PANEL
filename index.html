@@ -6737,7 +6737,7 @@ function renderSwitcherMenu() {
                 <div class="switcher-grade">@${acc.username} — ${acc.grade||''}</div>
             </div>
             ${isActive ? '<span style="color:#C9A227;font-size:16px;">✓</span>' : ''}
-            <button onclick="event.stopPropagation();removeAccountFromSwitcher(${i})" style="background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:14px;padding:2px 4px;" title="Retirer">✕</button>
+            <button onclick="event.stopPropagation();removeAccountFromSwitcher(${i})" style="background:rgba(211,47,47,0.12);border:1px solid rgba(211,47,47,0.3);color:#d32f2f;cursor:pointer;font-size:13px;font-weight:700;padding:4px 8px;border-radius:6px;flex-shrink:0;" title="Retirer ce compte de la liste">🗑</button>
         </div>`;
     }).join('');
 }
@@ -6857,6 +6857,8 @@ async function confirmAddSwitcherAccount() {
 
 function removeAccountFromSwitcher(idx) {
     const accounts = getSavedAccounts();
+    const acc = accounts[idx];
+    if (acc && !confirm(`Retirer @${acc.username} de la liste des comptes sauvegardés ?\n(Le compte lui-même n'est pas supprimé, juste retiré du sélecteur rapide.)`)) return;
     accounts.splice(idx, 1);
     saveSavedAccounts(accounts);
     renderSwitcherMenu();
