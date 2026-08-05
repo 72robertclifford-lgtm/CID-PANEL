@@ -2651,7 +2651,8 @@ async function setGrade(username, grade) {
             : grade.toLowerCase().includes('commanding') ? 'commanding'
             : grade.toLowerCase().includes('master') ? 'master'
             : grade.toLowerCase().includes('sénior') || grade.toLowerCase().includes('senior') ? 'senior'
-            : grade.toLowerCase().includes('procureur') ? null
+            : grade.toLowerCase().includes('command staff') ? 'commandstaff'
+            : grade.toLowerCase().includes('procureur') ? 'procureur'
             : 'detective';
         
         const idx = orgMembers.findIndex(m => m.username === username);
@@ -5917,6 +5918,7 @@ function renderOrgChartTab() {
         { key: 'senior', label: 'Sénior Détective', color: '#6b9fd4', icon: '🔷', glow: 'rgba(107,159,212,0.2)' },
         { key: 'detective', label: 'Détective', color: '#4a90d9', icon: '🔹', glow: 'rgba(74,144,217,0.2)' },
         { key: 'commandstaff', label: 'Command Staff', color: '#888888', icon: '🔸', glow: 'rgba(136,136,136,0.15)' },
+        { key: 'procureur', label: 'Procureur', color: '#9c3cb0', icon: '⚖️', glow: 'rgba(156,60,176,0.2)' },
     ];
 
     let html = `
@@ -6147,12 +6149,12 @@ async function syncOrgGradesFromAccounts() {
                 : g.includes('supervisor') ? 'supervisor'
                 : g.includes('master') ? 'master'
                 : g.includes('sénior') || g.includes('senior') ? 'senior'
-                : g.includes('procureur') ? null
+                : g.includes('procureur') ? 'procureur'
                 : g.includes('détective') || g.includes('detective') ? 'detective'
                 : null;
 
             if (gradeKey === null) {
-                // Remove procureur from orgchart but keep their data
+                // Grade non reconnu / vide : on ne l'ajoute pas à l'organigramme
                 const idx = orgMembers.findIndex(m => m.username === acc.username);
                 if (idx >= 0) { orgMembers.splice(idx, 1); changed = true; }
                 return;
@@ -7047,7 +7049,7 @@ async function quickSetGrade(username, grade) {
         const idx = orgMembers.findIndex(m => m.username === username);
         if (idx >= 0) {
             const g = grade.toLowerCase();
-            orgMembers[idx].grade = g.includes('command staff')?'commandstaff':g.includes('commanding')?'commanding':g.includes('supervisor')?'supervisor':g.includes('master')?'master':g.includes('sénior')||g.includes('senior')?'senior':'detective';
+            orgMembers[idx].grade = g.includes('command staff')?'commandstaff':g.includes('commanding')?'commanding':g.includes('supervisor')?'supervisor':g.includes('master')?'master':g.includes('sénior')||g.includes('senior')?'senior':g.includes('procureur')?'procureur':'detective';
         }
         loadQuickAdminPanel();
     } catch(e) { alert('Erreur: ' + e.message); }
