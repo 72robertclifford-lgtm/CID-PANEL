@@ -10270,9 +10270,15 @@ function renderInjonctionEditor(container) {
                         <div style="padding:14px 16px 18px;">
                             <div id="injonctionLinksList"></div>
                             ${canWrite ? `
-                            <div style="display:flex;gap:8px;margin-top:10px;">
-                                <input type="url" id="injonctionLinkInput" placeholder="Colle un lien ici (https://...)" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:13px;" onkeydown="if(event.key==='Enter'){event.preventDefault();injonctionAddLink();}">
-                                <button type="button" onclick="injonctionAddLink()" style="background:#C9A227;color:#0D2B5E;border:none;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer;font-size:13px;">+ Ajouter</button>
+                            <div style="display:flex;flex-direction:column;gap:7px;margin-top:10px;padding:12px;background:rgba(13,43,94,0.04);border:1px solid rgba(201,162,39,0.2);border-radius:10px;">
+                                <div style="display:flex;gap:8px;">
+                                    <input type="url" id="injonctionLinkInput" placeholder="URL (https://...)" style="flex:2;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:13px;">
+                                    <input type="text" id="injonctionLinkTitle" placeholder="Titre (ex: Rapport Casino)" style="flex:2;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:13px;">
+                                </div>
+                                <div style="display:flex;gap:8px;">
+                                    <input type="text" id="injonctionLinkDesc" placeholder="Description courte (facultatif)" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:13px;" onkeydown="if(event.key==='Enter'){event.preventDefault();injonctionAddLink();}">
+                                    <button type="button" onclick="injonctionAddLink()" style="background:#C9A227;color:#0D2B5E;border:none;border-radius:8px;padding:9px 18px;font-weight:700;cursor:pointer;font-size:13px;white-space:nowrap;">+ Ajouter</button>
+                                </div>
                             </div>` : ''}
                         </div>
                     </div>
@@ -10453,29 +10459,30 @@ function injonctionRenderLinks() {
     const f = injonctionForm();
     if (!container || !f) return;
     if (!f.links || !f.links.length) {
-        container.innerHTML = '<p style="font-size:12.5px;color:rgba(0,0,0,0.4);font-style:italic;margin:0;">Aucun lien ajouté.</p>';
+        container.innerHTML = '<p style="font-size:12.5px;color:rgba(0,0,0,0.4);font-style:italic;margin:0 0 8px;">Aucun lien ajouté.</p>';
         return;
     }
-    const canWrite = canEditInjonction(currentInjonctionId);
+    const canWrite = injonctionCanWrite();
     container.innerHTML = f.links.map((link, i) => {
         let host = '';
         try { host = new URL(link.url).hostname.replace(/^www\./, ''); } catch(e) { host = link.url; }
         const label = link.title || host;
         const urlSafe = link.url.replace(/'/g, "\\'");
-        return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(13,43,94,0.06);border:1px solid rgba(201,162,39,0.2);border-radius:10px;margin-bottom:8px;">
-            <span style="font-size:18px;">${_getLinkIcon(link.url)}</span>
+        return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(13,43,94,0.06);border:1px solid rgba(201,162,39,0.22);border-radius:10px;margin-bottom:8px;">
+            <span style="font-size:20px;flex-shrink:0;">${_getLinkIcon(link.url)}</span>
             <div style="flex:1;min-width:0;">
-                <div style="font-size:13px;font-weight:700;color:#0D2B5E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${rapEsc(label)}</div>
-                <div style="font-size:10.5px;color:rgba(0,0,0,0.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${rapEsc(host)}</div>
+                <div style="font-size:13.5px;font-weight:700;color:#0D2B5E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${rapEsc(label)}</div>
+                ${link.desc ? `<div style="font-size:11.5px;color:rgba(0,0,0,0.55);margin-top:1px;">${rapEsc(link.desc)}</div>` : ''}
+                <div style="font-size:10px;color:rgba(0,0,0,0.38);margin-top:2px;">${rapEsc(host)}</div>
             </div>
             <a href="${rapEsc(link.url)}" target="_blank" rel="noopener"
                onmouseenter="showLinkPreview(event,'${urlSafe}')"
                onmousemove="positionLinkPreview(event)"
                onmouseleave="hideLinkPreview()"
-               style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;background:#0D2B5E;color:#C9A227;border:none;border-radius:7px;font-size:11.5px;font-weight:700;text-decoration:none;white-space:nowrap;cursor:pointer;">
+               style="display:inline-flex;align-items:center;gap:5px;padding:7px 14px;background:#0D2B5E;color:#C9A227;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap;flex-shrink:0;">
                🔗 Ouvrir
             </a>
-            ${canWrite ? `<button type="button" onclick="injonctionRemoveLink(${i})" style="background:rgba(211,47,47,0.1);color:#d32f2f;border:1px solid rgba(211,47,47,0.2);border-radius:7px;padding:6px 10px;cursor:pointer;font-size:12px;font-weight:700;">✕</button>` : ''}
+            ${canWrite ? `<button type="button" onclick="injonctionRemoveLink(${i})" style="background:rgba(211,47,47,0.1);color:#d32f2f;border:1px solid rgba(211,47,47,0.2);border-radius:7px;padding:7px 10px;cursor:pointer;font-size:12px;font-weight:700;flex-shrink:0;">✕</button>` : ''}
         </div>`;
     }).join('');
 }
@@ -10489,21 +10496,28 @@ function _getLinkIcon(url) {
 }
 
 async function injonctionAddLink() {
-    const input = document.getElementById('injonctionLinkInput');
+    const inputUrl = document.getElementById('injonctionLinkInput');
+    const inputTitle = document.getElementById('injonctionLinkTitle');
+    const inputDesc = document.getElementById('injonctionLinkDesc');
     const f = injonctionForm();
-    if (!input || !f) return;
-    const url = input.value.trim();
-    if (!url.startsWith('http')) { input.style.borderColor = '#d32f2f'; setTimeout(() => input.style.borderColor = '', 1500); return; }
+    if (!inputUrl || !f) return;
+    const url = inputUrl.value.trim();
+    if (!url.startsWith('http')) { inputUrl.style.borderColor = '#d32f2f'; setTimeout(() => inputUrl.style.borderColor = '', 1500); return; }
     if (!f.links) f.links = [];
-    // Tente de récupérer le titre de la page (via une API publique gratuite)
-    let title = '';
-    try {
-        const r = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}&meta=false&screenshot=false`);
-        const d = await r.json();
-        title = d.data?.title || '';
-    } catch(e) { /* silencieux */ }
-    f.links.push({ url, title });
-    input.value = '';
+    // Titre : soit celui saisi, soit récupéré automatiquement depuis la page, soit le domaine
+    let title = (inputTitle?.value || '').trim();
+    if (!title) {
+        try {
+            const r = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}&meta=false&screenshot=false`);
+            const d = await r.json();
+            title = d.data?.title || '';
+        } catch(e) { /* silencieux */ }
+    }
+    const desc = (inputDesc?.value || '').trim();
+    f.links.push({ url, title, desc });
+    inputUrl.value = '';
+    if (inputTitle) inputTitle.value = '';
+    if (inputDesc) inputDesc.value = '';
     injonctionSaveData();
     injonctionRenderLinks();
 }
