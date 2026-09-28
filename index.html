@@ -1189,6 +1189,21 @@
 </div>
 
 <!-- FORGOT PASSWORD MODAL (étape 1 : demande + code) -->
+<!-- GRADE MANAGEMENT MODAL (accessible depuis le site principal, visible aux supervisors/admin) -->
+<div id="gradeManagementModal" class="modal" onclick="if(event.target===this)closeGradeManagementModal()">
+    <div class="modal-dialog" style="max-width:480px;">
+        <h2>👑 Gestion des rôles</h2>
+        <p style="font-size:12.5px;color:var(--text2);margin:0 0 14px;">Modifie le grade d'un membre sans passer par le panneau admin.</p>
+        <div style="margin-bottom:10px;">
+            <input type="text" id="gmSearch" placeholder="🔍 Rechercher un @pseudo..." oninput="gmFilterAccounts()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:13px;box-sizing:border-box;">
+        </div>
+        <div id="gmAccountsList" style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;"></div>
+        <div class="modal-actions" style="margin-top:14px;">
+            <button class="btn-cancel" onclick="closeGradeManagementModal()">Fermer</button>
+        </div>
+    </div>
+</div>
+
 <div id="forgotPasswordModal" class="modal" onclick="if(event.target===this)closeForgotPasswordModal()">
     <div class="modal-dialog">
         <h2>🔑 Mot de passe oublié</h2>
@@ -1204,7 +1219,7 @@
         <div id="fpStep2" style="display:none;">
             <p style="font-size:13px;color:var(--text2);margin:0 0 14px;">Voici ton code de vérification :</p>
             <div id="fpCodeDisplay" style="text-align:center;font-size:28px;font-weight:900;letter-spacing:6px;color:#C9A227;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.3);border-radius:10px;padding:14px;margin-bottom:14px;"></div>
-            <p style="font-size:13px;color:var(--text2);line-height:1.6;margin:0 0 16px;">📩 Envoie ce code <b>en message privé</b> à un administrateur sur <b>Discord (99, 91 ou 72).</b> Une fois ton identité vérifiée, tu recevras un lien pour pouvoir modifier ton mot de passe.</p>
+            <p style="font-size:13px;color:var(--text2);line-height:1.6;margin:0 0 16px;">📩 Envoie ce code <b>en message privé</b> à un administrateur sur <b>Discord (99, 91 ou 72).</b> Une fois ton identité vérifiée, tu recevras un lien pour pouvoir modifier ton mot de passe.<br><br>⚠️ <b>Ce code est valable 10 minutes.</b> Passé ce délai, tu devras recommencer une nouvelle demande.</p>
             <div class="modal-actions">
                 <button class="btn-confirm" onclick="closeForgotPasswordModal()">Compris</button>
             </div>
@@ -1329,6 +1344,15 @@
         </div>
 
         <div class="admin-section">
+            <h3>📋 Journal d'activité (Logs)</h3>
+            <div style="display:flex;gap:8px;margin-bottom:10px;">
+                <input type="text" id="logsSearch" placeholder="🔍 Filtrer par pseudo, action..." oninput="renderLogsPanel()" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:12.5px;">
+                <button onclick="renderLogsPanel()" style="background:rgba(201,162,39,0.15);color:#C9A227;border:1px solid rgba(201,162,39,0.3);border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;font-size:12px;">↻ Actualiser</button>
+            </div>
+            <div id="logsPanel"></div>
+        </div>
+
+        <div class="admin-section">
             <h3>⏳ Comptes en attente de validation</h3>
             <div id="pendingAccounts"></div>
         </div>
@@ -1355,6 +1379,7 @@
                 <small id="userRole" style="font-size:12px;">Détective</small>
             </div>
             <div style="display:flex;align-items:center;gap:10px;margin-left:auto;">
+                <button id="gradeManagementBtn" onclick="openGradeManagementModal()" style="display:none;align-items:center;gap:6px;background:rgba(201,162,39,0.12);color:#C9A227;border:1px solid rgba(201,162,39,0.3);padding:8px 14px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">👑 Rôles</button>
                 <button onclick="openMyProfile()" style="display:flex;align-items:center;gap:8px;background:rgba(201,162,39,0.1);color:#C9A227;border:1px solid rgba(201,162,39,0.25);padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;transition:all 0.15s;" onmouseover="this.style.background='rgba(201,162,39,0.2)'" onmouseout="this.style.background='rgba(201,162,39,0.1)'">
                     <span id="headerProfilePhoto" style="display:none;"><img id="headerProfileImg" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:2px solid #C9A227;" src=""></span>
                     <span id="headerProfileIcon" style="font-size:16px;">👤</span>
@@ -1375,8 +1400,6 @@
                 </div>
             </div>
         </div>
-
-
 
         <div class="success-msg" id="successMsgDossiers"></div>
 
@@ -1977,7 +2000,53 @@ async function sbUpsertSetting(key, value) {
     });
 }
 
-// ==================== RÉINITIALISATION DE MOT DE PASSE ====================
+// ==================== SYSTÈME DE LOGS ====================
+// Garde une trace de toutes les actions importantes : création, modification, suppression.
+// Visible dans le panneau admin. Max 500 entrées (les plus récentes en premier).
+const MAX_LOGS = 500;
+let _logsBuffer = [];
+
+async function logAction(action, details) {
+    if (!currentUser) return;
+    try {
+        const entry = {
+            id: Date.now().toString() + Math.random().toString(36).slice(2,6),
+            timestamp: new Date().toLocaleString('fr-FR'),
+            username: currentUser.username,
+            grade: currentUser.grade || '',
+            action,
+            details: details || ''
+        };
+        const rows = await sbFetch('org_settings?key=eq.cid_logs&select=value');
+        let logs = (rows && rows[0]) ? JSON.parse(rows[0].value || '[]') : [];
+        logs.unshift(entry);
+        if (logs.length > MAX_LOGS) logs = logs.slice(0, MAX_LOGS);
+        await sbUpsertSetting('cid_logs', JSON.stringify(logs));
+    } catch(e) { /* silencieux : les logs ne doivent jamais bloquer une action */ }
+}
+
+async function renderLogsPanel() {
+    const container = document.getElementById('logsPanel');
+    if (!container) return;
+    container.innerHTML = '<p style="font-size:12px;color:var(--text3);">Chargement...</p>';
+    try {
+        const rows = await sbFetch('org_settings?key=eq.cid_logs&select=value');
+        const logs = (rows && rows[0]) ? JSON.parse(rows[0].value || '[]') : [];
+        if (!logs.length) { container.innerHTML = '<p style="font-size:12px;color:var(--text3);">Aucune action enregistrée pour le moment.</p>'; return; }
+        const search = (document.getElementById('logsSearch')?.value || '').toLowerCase();
+        const filtered = search ? logs.filter(l => (l.username+l.action+l.details).toLowerCase().includes(search)) : logs;
+        container.innerHTML = `<div style="max-height:340px;overflow-y:auto;">
+            ${filtered.slice(0,100).map(l => `
+            <div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:12px;">
+                <span style="color:rgba(255,255,255,0.4);white-space:nowrap;min-width:120px;">${rapEsc(l.timestamp)}</span>
+                <span style="color:#C9A227;font-weight:700;min-width:90px;">@${rapEsc(l.username)}</span>
+                <span style="color:rgba(255,255,255,0.85);"><b>${rapEsc(l.action)}</b>${l.details ? ' — '+rapEsc(l.details) : ''}</span>
+            </div>`).join('')}
+        </div>`;
+    } catch(e) { container.innerHTML = '<p style="font-size:12px;color:#e74c3c;">Erreur de chargement des logs.</p>'; }
+}
+
+
 let _passwordResetRequests = [];
 
 async function loadPasswordResetRequests() {
@@ -2001,6 +2070,50 @@ function closeForgotPasswordModal() {
     document.getElementById('forgotPasswordModal').classList.remove('active');
 }
 
+// ---- Gestion des rôles depuis le site principal (visible aux supervisors/Admin) ----
+let _gmAllAccounts = [];
+async function openGradeManagementModal() {
+    document.getElementById('gradeManagementModal').classList.add('active');
+    document.getElementById('gmSearch').value = '';
+    document.getElementById('gmAccountsList').innerHTML = '<div style="padding:12px;color:var(--text3);font-size:13px;">Chargement...</div>';
+    try {
+        _gmAllAccounts = await sb.getAccounts() || [];
+        gmFilterAccounts();
+    } catch(e) {
+        document.getElementById('gmAccountsList').innerHTML = '<div style="padding:12px;color:#e74c3c;font-size:12px;">Erreur : ' + e.message + '</div>';
+    }
+}
+function closeGradeManagementModal() {
+    document.getElementById('gradeManagementModal').classList.remove('active');
+}
+function gmFilterAccounts() {
+    const q = (document.getElementById('gmSearch')?.value || '').toLowerCase();
+    const filtered = q ? _gmAllAccounts.filter(a => (a.username+a.first_name+a.last_name).toLowerCase().includes(q)) : _gmAllAccounts;
+    const grades = ['Admin','Commanding','Supervisor CID','Master Investigator','Sénior Détective','Command Staff','Détective','Procureur',''];
+    const container = document.getElementById('gmAccountsList');
+    if (!filtered.length) { container.innerHTML = '<div style="padding:12px;color:var(--text3);font-size:13px;">Aucun compte trouvé.</div>'; return; }
+    container.innerHTML = filtered.map(a => `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.06);">
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:700;font-size:13px;">@${rapEsc(a.username)}</div>
+                <div style="font-size:11px;color:var(--text3);">${rapEsc(a.first_name||'')} ${rapEsc(a.last_name||'')}</div>
+            </div>
+            <select onchange="gmChangeGrade('${a.username}',this.value)" style="padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--input-bg);color:var(--text);font-size:12px;cursor:pointer;">
+                ${grades.map(g => `<option value="${rapEsc(g)}" ${a.grade===g?'selected':''}>${g||'— Aucun grade —'}</option>`).join('')}
+            </select>
+        </div>`).join('');
+}
+async function gmChangeGrade(username, grade) {
+    try {
+        await sb.updateAccount(username, { grade });
+        logAction('Grade modifié (site)', '@' + username + ' → ' + (grade || 'aucun'));
+        const acc = _gmAllAccounts.find(a => a.username === username);
+        if (acc) acc.grade = grade;
+        showSuccessDossiers('✅ Grade de @' + username + ' mis à jour → ' + (grade || 'aucun'));
+    } catch(e) { alert('Erreur : ' + e.message); }
+}
+
+
 async function submitForgotPasswordRequest() {
     const username = document.getElementById('fpUsername').value.trim();
     const msg = document.getElementById('fpMsg');
@@ -2018,7 +2131,8 @@ async function submitForgotPasswordRequest() {
             username,
             code,
             status: 'pending',
-            requestedAt: new Date().toLocaleString('fr-FR')
+            requestedAt: new Date().toLocaleString('fr-FR'),
+            expiresAt: Date.now() + 10 * 60 * 1000  // valable 10 minutes
         });
         await savePasswordResetRequests();
         document.getElementById('fpCodeDisplay').textContent = code;
@@ -2034,26 +2148,43 @@ async function renderPasswordResetRequestsPanel() {
     const container = document.getElementById('passwordResetRequestsPanel');
     if (!container) return;
     await loadPasswordResetRequests();
+    const now = Date.now();
+    // Expire automatiquement les demandes dépassées
+    let changed = false;
+    _passwordResetRequests.forEach(r => { if (r.status === 'pending' && r.expiresAt && now > r.expiresAt) { r.status = 'expired'; changed = true; } });
+    if (changed) await savePasswordResetRequests();
     const pending = _passwordResetRequests.filter(r => r.status === 'pending');
     if (!pending.length) {
         container.innerHTML = `<p style="font-size:12.5px;color:var(--text3);">Aucune demande en attente.</p>`;
         return;
     }
-    container.innerHTML = pending.map(r => `
+    container.innerHTML = pending.map(r => {
+        const remaining = r.expiresAt ? Math.max(0, Math.ceil((r.expiresAt - now) / 60000)) : '?';
+        const expireColor = remaining <= 2 ? '#e74c3c' : '#C9A227';
+        return `
         <div style="background:rgba(201,162,39,0.08);border:1px solid rgba(201,162,39,0.25);border-radius:10px;padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
             <div>
                 <div style="font-weight:700;font-size:13.5px;">@${rapEsc(r.username)}</div>
                 <div style="font-size:11px;color:var(--text3);">⏰ Demandé le ${rapEsc(r.requestedAt)}</div>
+                <div style="font-size:11px;color:${expireColor};font-weight:700;">⏱ Expire dans ~${remaining} min</div>
             </div>
             <button onclick="approvePasswordReset('${r.id}')" style="background:linear-gradient(135deg,#C9A227,#e0b830);color:#0D2B5E;border:none;border-radius:8px;padding:8px 14px;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap;">🔑 Vérifier le code</button>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
 }
 
 async function approvePasswordReset(requestId) {
     await loadPasswordResetRequests();
     const req = _passwordResetRequests.find(r => r.id === requestId);
     if (!req) { alert('Demande introuvable (peut-être déjà traitée).'); return; }
+    // Vérifie que le code n'a pas expiré (10 minutes)
+    if (req.expiresAt && Date.now() > req.expiresAt) {
+        req.status = 'expired';
+        await savePasswordResetRequests();
+        alert('❌ Ce code a expiré (validité : 10 minutes). Le joueur doit faire une nouvelle demande.');
+        renderPasswordResetRequestsPanel();
+        return;
+    }
     const entered = prompt(`Code que @${req.username} t'a envoyé en message privé sur Discord :`);
     if (entered === null) return;
     if (entered.trim() !== req.code) {
@@ -2581,9 +2712,10 @@ async function renderAdminPanel() {
         const badge = document.getElementById('passwordResetBadge');
         if (badge) { badge.style.display = pendingCount ? 'inline-block' : 'none'; badge.textContent = pendingCount; }
     });
+    renderLogsPanel();
     try {
         const accounts = await sb.getAccounts();
-        const gradeOrder = ['Commanding','Supervisor CID','Master Investigator','Sénior Détective','Détective','Procureur','Command Staff',''];
+        const gradeOrder = ['Admin','Commanding','Supervisor CID','Master Investigator','Sénior Détective','Détective','Procureur','Command Staff',''];
         const sortByGrade = (a, b) => {
             const ai = gradeOrder.indexOf(a.grade||'');
             const bi = gradeOrder.indexOf(b.grade||'');
@@ -2603,7 +2735,7 @@ function accountRow(a) {
     const status = a.status;
     const badge = { pending: 'status-pending', approved: 'status-approved', rejected: 'status-rejected' }[status];
     const label = { pending: 'En attente', approved: 'Approuvé', rejected: 'Refusé' }[status];
-    const grades = ['Commanding','Supervisor CID','Master Investigator','Sénior Détective','Détective','Procureur','Command Staff']; // Admin: all grades available
+    const grades = ['Admin','Commanding','Supervisor CID','Master Investigator','Sénior Détective','Détective','Procureur','Command Staff']; // Admin: all grades available
     const gradeSelect = `<select onchange="setGrade('${a.username}', this.value)" style="padding:5px 8px;border:1px solid var(--border,#ddd);border-radius:4px;font-size:12px;background:var(--input-bg,#fff);color:var(--text,#333);cursor:pointer;">
         <option value="">— Grade —</option>
         ${grades.map(g => `<option value="${g}" ${a.grade===g?'selected':''}>${g}</option>`).join('')}
@@ -2686,6 +2818,7 @@ async function setAccountStatus(username, status) {
     try {
         await sb.updateAccount(username, { status });
         if (status === 'rejected') clearOrgMemberPhoto(username);
+        logAction(status === 'approved' ? 'Compte approuvé' : status === 'rejected' ? 'Compte révoqué/refusé' : 'Statut modifié', '@' + username + ' → ' + status);
         renderAdminPanel();
     } catch(e) { alert('Erreur: ' + e.message); }
 }
@@ -2695,6 +2828,7 @@ async function deleteAccount(username) {
     try {
         await sb.deleteAccount(username);
         clearOrgMemberPhoto(username);
+        logAction('Compte supprimé', '@' + username);
         renderAdminPanel();
     } catch(e) { alert('Erreur: ' + e.message); }
 }
@@ -5234,10 +5368,11 @@ function getPermLevel() {
     if (!currentUser) return 'none';
     if (currentUser.role === 'admin') return 'supervisor';
     const g = (currentUser.grade || '').toLowerCase().trim();
+    if (g === 'admin') return 'supervisor';
     if (['supervisor cid', 'commanding', 'master investigator'].includes(g)) return 'supervisor';
     if (['détective', 'detective', 'sénior détective', 'senior detective', 'command staff'].includes(g)) return 'detective';
     if (g === 'procureur') return 'procureur';
-    return 'procureur';
+    return 'none'; // Grade vide ou inconnu = aucun accès (pas même les liens partagés)
 }
 
 function canEdit() {
@@ -5248,18 +5383,39 @@ function canEditDoc(type, id) {
     if (canEdit()) return true;
     return isDocEditor(type, id);
 }
-
 function canDeleteDossier() {
     return getPermLevel() === 'supervisor';
 }
+
+// Accès "none" (grade vide / non attribué) → bloque absolument tout, même les liens partagés
+function _hasAnyAccess() { return getPermLevel() !== 'none'; }
+
 
 function applyPermissions() {
     const perm = getPermLevel();
     const isSupervisor = perm === 'supervisor';
     const isDetective = perm === 'detective';
     const isProcureur = perm === 'procureur';
-    const canWrite = isSupervisor || isDetective; // can edit/add content
-    const canDelContent = isSupervisor || isDetective; // can delete members, acts etc.
+    const isNone = perm === 'none';
+    const canWrite = isSupervisor || isDetective;
+    const canDelContent = isSupervisor || isDetective;
+
+    // Bouton gestion des rôles (visible uniquement aux supervisors/Admin)
+    const gradeBtn = document.getElementById('gradeManagementBtn');
+    if (gradeBtn) gradeBtn.style.display = isSupervisor ? 'flex' : 'none';
+
+    // ---- AUCUN ACCÈS (grade non attribué) ----
+    if (isNone) {
+        const content = document.getElementById('tabContentDossiers');
+        if (content) content.innerHTML = `<div style="text-align:center;padding:60px 24px;color:var(--text2);">
+            <div style="font-size:48px;margin-bottom:16px;">🔒</div>
+            <h2 style="color:#C9A227;margin-bottom:8px;">Accès en attente</h2>
+            <p style="font-size:14px;max-width:360px;margin:0 auto;line-height:1.6;">Ton compte existe mais aucun rôle ne t'a encore été attribué.<br>Contacte un administrateur sur Discord pour qu'il te donne accès.</p>
+        </div>`;
+        // Cache tous les onglets sauf celui par défaut
+        document.querySelectorAll('.nav-tab, .nav-dropdown-item').forEach(el => el.style.display = 'none');
+        return;
+    }
 
     // ---- BANNER ----
     let banner = document.getElementById('permBanner');
@@ -6500,6 +6656,7 @@ async function setDossierAccess(dossierId, usernames) {
 }
 
 async function canAccessDossier(dossierId) {
+    if (!_hasAnyAccess()) return false;
     if (getPermLevel() !== 'procureur') return true; // non-procureur: full access
     const access = await getDossierAccessList();
     const list = access[dossierId] || [];
@@ -6923,7 +7080,7 @@ async function loadQuickAdminPanel() {
         }
 
         const perm = getPermLevel();
-        const gradeOrder = ['Commanding','Supervisor CID','Master Investigator','Sénior Détective','Détective','Procureur','Command Staff',''];
+        const gradeOrder = ['Admin','Commanding','Supervisor CID','Master Investigator','Sénior Détective','Détective','Procureur','Command Staff',''];
         
         const pending = accounts.filter(a => a.status === 'pending');
         const approved = accounts.filter(a => a.status === 'approved')
@@ -6980,7 +7137,7 @@ async function loadQuickAdminPanel() {
 
 function quickAccountRow(a) {
     const initials = ((a.first_name||'?')[0]+(a.last_name||'?')[0]).toUpperCase();
-    const allGrades = ['Commanding','Supervisor CID','Master Investigator','Sénior Détective','Détective','Procureur','Command Staff'];
+    const allGrades = ['Admin','Commanding','Supervisor CID','Master Investigator','Sénior Détective','Détective','Procureur','Command Staff'];
     const userGrade = (currentUser?.grade||'').toLowerCase();
     const gradeOrder = allGrades;
     const myRank = gradeOrder.indexOf(
@@ -7045,7 +7202,7 @@ function quickAccountRow(a) {
 async function quickSetGrade(username, grade) {
     if (!grade) return;
     const userGrade = (currentUser?.grade||'').toLowerCase();
-    const gradeOrder = ['Commanding','Supervisor CID','Master Investigator','Sénior Détective','Détective','Procureur','Command Staff'];
+    const gradeOrder = ['Admin','Commanding','Supervisor CID','Master Investigator','Sénior Détective','Détective','Procureur','Command Staff'];
     
     // Get current grade of target account
     const allAccounts = await sbFetch('accounts?username=eq.' + username + '&select=grade');
@@ -7073,6 +7230,7 @@ async function quickSetGrade(username, grade) {
     }
     
     try {
+        logAction('Grade modifié', '@' + username + ' → ' + grade);
         await sb.updateAccount(username, { grade });
         // Update orgchart grade
         const idx = orgMembers.findIndex(m => m.username === username);
@@ -8990,6 +9148,7 @@ function grantMandatLinkAccess(id) {
     _saveMandatAccess();
 }
 function canViewMandat(id) {
+    if (!_hasAnyAccess()) return false;
     if (getPermLevel() !== 'procureur') return true;
     // Procureur : accès uniquement si le lien lui a été donné explicitement
     if (!Object.keys(_mandatAccess).length) _loadMandatAccess();
@@ -9778,7 +9937,8 @@ function blankInjonctionForm() {
             { proprietaire: '', numero: '', adresse: '' },
             { proprietaire: '', numero: '', adresse: '' }
         ],
-        entries: []
+        entries: [],
+        links: []
     };
 }
 
@@ -9816,6 +9976,7 @@ function grantInjonctionLinkAccess(id) {
     _saveInjonctionAccess();
 }
 function canViewInjonction(id) {
+    if (!_hasAnyAccess()) return false;
     if (getPermLevel() !== 'procureur') return true;
     // Procureur : accès uniquement si le lien lui a été donné explicitement
     if (!Object.keys(_injonctionAccess).length) _loadInjonctionAccess();
@@ -10004,6 +10165,7 @@ function renderInjonctionEditor(container) {
     if (typeof f.lieu !== 'string') f.lieu = 'Office de Vespucci';
     if (f.critere !== 'numero' && f.critere !== 'nom') f.critere = 'numero';
     if (!f.entries) f.entries = [];
+    if (!f.links) f.links = [];
     if (!f.officiers) f.officiers = [];
     // Migration : ancien format (string) -> objet {username, label}
     f.officiers = f.officiers.map(o => typeof o === 'string' ? { username: null, label: o } : o).filter(o => o && o.label);
@@ -10103,6 +10265,18 @@ function renderInjonctionEditor(container) {
                         </div>
                     </div>
 
+                    <div class="m-section-box">
+                        <div class="m-section-header"><span class="m-sh-icon">🔗</span> Liens externes (documents, rapports, vidéos...)</div>
+                        <div style="padding:14px 16px 18px;">
+                            <div id="injonctionLinksList"></div>
+                            ${canWrite ? `
+                            <div style="display:flex;gap:8px;margin-top:10px;">
+                                <input type="url" id="injonctionLinkInput" placeholder="Colle un lien ici (https://...)" style="flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);font-size:13px;" onkeydown="if(event.key==='Enter'){event.preventDefault();injonctionAddLink();}">
+                                <button type="button" onclick="injonctionAddLink()" style="background:#C9A227;color:#0D2B5E;border:none;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer;font-size:13px;">+ Ajouter</button>
+                            </div>` : ''}
+                        </div>
+                    </div>
+
                     <div style="font-family:Georgia,serif;font-size:14.5px;line-height:1.7;color:#2b2b2b;padding:8px 2px 0;">
                         <p style="margin:0;">Nous vous prions d'agréer, monsieur le procureur, l'expression de nos respectueuses et sincères salutations,</p>
                     </div>
@@ -10117,6 +10291,7 @@ function renderInjonctionEditor(container) {
     injonctionRenderEntries();
     injonctionRenderOfficiers();
     injonctionRenderRows();
+    injonctionRenderLinks();
     injonctionRenderCritere();
 }
 
@@ -10255,6 +10430,80 @@ function injonctionRenderEntries() {
             </div>` : ''}
         </div>
     `).join('');
+}
+
+// ---- Liens externes (section dédiée) ----
+function injonctionForm() {
+    const m = cidInjonctions.find(x => x.id === currentInjonctionId);
+    return m ? (m.form || (m.form = blankInjonctionForm())) : null;
+}
+
+function injonctionRenderLinks() {
+    const container = document.getElementById('injonctionLinksList');
+    const f = injonctionForm();
+    if (!container || !f) return;
+    if (!f.links || !f.links.length) {
+        container.innerHTML = '<p style="font-size:12.5px;color:rgba(0,0,0,0.4);font-style:italic;margin:0;">Aucun lien ajouté.</p>';
+        return;
+    }
+    const canWrite = canEditInjonction(currentInjonctionId);
+    container.innerHTML = f.links.map((link, i) => {
+        let host = '';
+        try { host = new URL(link.url).hostname.replace(/^www\./, ''); } catch(e) { host = link.url; }
+        const label = link.title || host;
+        const urlSafe = link.url.replace(/'/g, "\\'");
+        return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(13,43,94,0.06);border:1px solid rgba(201,162,39,0.2);border-radius:10px;margin-bottom:8px;">
+            <span style="font-size:18px;">${_getLinkIcon(link.url)}</span>
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:700;color:#0D2B5E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${rapEsc(label)}</div>
+                <div style="font-size:10.5px;color:rgba(0,0,0,0.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${rapEsc(host)}</div>
+            </div>
+            <a href="${rapEsc(link.url)}" target="_blank" rel="noopener"
+               onmouseenter="showLinkPreview(event,'${urlSafe}')"
+               onmousemove="positionLinkPreview(event)"
+               onmouseleave="hideLinkPreview()"
+               style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;background:#0D2B5E;color:#C9A227;border:none;border-radius:7px;font-size:11.5px;font-weight:700;text-decoration:none;white-space:nowrap;cursor:pointer;">
+               🔗 Ouvrir
+            </a>
+            ${canWrite ? `<button type="button" onclick="injonctionRemoveLink(${i})" style="background:rgba(211,47,47,0.1);color:#d32f2f;border:1px solid rgba(211,47,47,0.2);border-radius:7px;padding:6px 10px;cursor:pointer;font-size:12px;font-weight:700;">✕</button>` : ''}
+        </div>`;
+    }).join('');
+}
+
+function _getLinkIcon(url) {
+    if (/youtu/.test(url)) return '▶️';
+    if (/docs\.google\.com/.test(url)) return '📄';
+    if (/discord/.test(url)) return '💬';
+    if (/imgbb|ibb\.co|catbox/.test(url)) return '🖼️';
+    return '🔗';
+}
+
+async function injonctionAddLink() {
+    const input = document.getElementById('injonctionLinkInput');
+    const f = injonctionForm();
+    if (!input || !f) return;
+    const url = input.value.trim();
+    if (!url.startsWith('http')) { input.style.borderColor = '#d32f2f'; setTimeout(() => input.style.borderColor = '', 1500); return; }
+    if (!f.links) f.links = [];
+    // Tente de récupérer le titre de la page (via une API publique gratuite)
+    let title = '';
+    try {
+        const r = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}&meta=false&screenshot=false`);
+        const d = await r.json();
+        title = d.data?.title || '';
+    } catch(e) { /* silencieux */ }
+    f.links.push({ url, title });
+    input.value = '';
+    injonctionSaveData();
+    injonctionRenderLinks();
+}
+
+function injonctionRemoveLink(i) {
+    const f = injonctionForm();
+    if (!f || !f.links) return;
+    f.links.splice(i, 1);
+    injonctionSaveData();
+    injonctionRenderLinks();
 }
 
 function injonctionAddEntry() {
@@ -10582,6 +10831,7 @@ function grantBilanLinkAccess(id) {
     _saveBilanAccess();
 }
 function canViewBilan(id) {
+    if (!_hasAnyAccess()) return false;
     if (getPermLevel() !== 'procureur') return true;
     // Procureur : accès uniquement si le lien lui a été donné explicitement
     if (!Object.keys(_bilanAccess).length) _loadBilanAccess();
@@ -11291,6 +11541,7 @@ function grantTelephoniqueLinkAccess(id) {
     _saveTelephoniqueAccess();
 }
 function canViewTelephonique(id) {
+    if (!_hasAnyAccess()) return false;
     if (getPermLevel() !== 'procureur') return true;
     // Procureur : accès uniquement si le lien lui a été donné explicitement
     if (!Object.keys(_telephoniqueAccess).length) _loadTelephoniqueAccess();
@@ -12007,6 +12258,7 @@ function grantBilanTelLinkAccess(id) {
     _saveBilanTelAccess();
 }
 function canViewBilanTel(id) {
+    if (!_hasAnyAccess()) return false;
     if (getPermLevel() !== 'procureur') return true;
     // Procureur : accès uniquement si le lien lui a été donné explicitement
     if (!Object.keys(_bilanTelAccess).length) _loadBilanTelAccess();
@@ -13109,7 +13361,7 @@ function getRapportAccessLabel(id) {
 }
 
 function canViewRapport(id) {
-    // Procureur : jamais accès (même avec le lien)
+    if (!_hasAnyAccess()) return false;
     if (getPermLevel() === 'procureur') return false;
     // Tous les autres grades (detective, senior, master, supervisor, commanding) : accès direct
     return true;
