@@ -66,7 +66,7 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Inter','Segoe UI',system-ui,sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; font-size: 14px; -webkit-font-smoothing: antialiased; }
 
-        .container { max-width: 1300px; margin: 0 auto; padding: 16px 24px; }
+        .container { max-width: 1260px; margin: 0 auto; padding: 16px 24px; }
         .container.container--full-carte { max-width: 1700px; padding-left: 16px; padding-right: 16px; }
         .page { display: none; }
 
@@ -1470,7 +1470,7 @@
         <div class="tab-content" id="tabContentMandat">
             <style>
                 .mandat-wrap { padding:28px 10px 60px; }
-                .mandat-toolbar { display:flex; justify-content:flex-end; align-items:center; gap:10px; max-width:740px; margin:0 auto 18px; }
+                .mandat-toolbar { display:flex; justify-content:flex-end; align-items:center; gap:10px; max-width:1060px; margin:0 auto 18px; }
                 .mandat-toolbar button {
                     background:linear-gradient(135deg,#C9A227,#e0b830); color:#0D2B5E; border:none;
                     padding:9px 18px; border-radius:9px; cursor:pointer; font-weight:800; font-size:13px;
@@ -1513,11 +1513,11 @@
                     text-transform:uppercase; color:#a67d0f; white-space:nowrap; margin-top:3px;
                 }
                 .mandat-doc .m-page {
-                    background:#fffdf9; width:740px; max-width:100%; margin:0 auto 34px auto;
+                    background:#fffdf9; width:1060px; max-width:100%; margin:0 auto 34px auto;
                     border-radius:18px; overflow:hidden; box-shadow:0 6px 20px rgba(5,12,30,0.25);
                     border:1px solid rgba(201,162,39,0.15);
                 }
-                .mandat-doc .m-page-inner { padding:0 38px 34px; }
+                .mandat-doc .m-page-inner { padding:0 48px 34px; }
                 .mandat-doc .m-page-note {
                     text-align:center; font-style:italic; font-size:12px; color:#C9A227; letter-spacing:0.5px;
                     padding:10px 0; background:rgba(201,162,39,0.06);
@@ -9358,7 +9358,7 @@ function renderMandatEditor(container) {
         <button class="btn-toolbar" onclick="exportMandatToGoogleDocs('${id}')" style="background:rgba(15,157,88,0.15);color:#5fd68f;border:1px solid rgba(15,157,88,0.4);">📤 Exporter vers Google Docs</button>
         ${canWrite ? `<button class="btn-toolbar" onclick="renameMandat('${id}')" style="background:rgba(201,162,39,0.15);color:#C9A227;border:1px solid rgba(201,162,39,0.3);">✏️ Renommer</button>` : ''}
     </div>
-    ${!canWrite ? `<div style="max-width:740px;margin:0 auto 16px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.35);color:#e0b830;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;">🔒 Lecture seule — seuls les officiers assignés à ce mandat peuvent le modifier.</div>` : ''}
+    ${!canWrite ? `<div style="max-width:1060px;margin:0 auto 16px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.35);color:#e0b830;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;">🔒 Lecture seule — seuls les officiers assignés à ce mandat peuvent le modifier.</div>` : ''}
 
     <div class="mandat-wrap" style="padding-top:0;">
         <div class="mandat-doc" contenteditable="false">
@@ -10180,7 +10180,7 @@ function renderInjonctionEditor(container) {
         <button class="btn-toolbar" onclick="exportInjonctionToGoogleDocs('${id}')" style="background:rgba(15,157,88,0.15);color:#5fd68f;border:1px solid rgba(15,157,88,0.4);">📤 Exporter vers Google Docs</button>
         ${canWrite ? `<button class="btn-toolbar" onclick="renameInjonction('${id}')" style="background:rgba(201,162,39,0.15);color:#C9A227;border:1px solid rgba(201,162,39,0.3);">✏️ Renommer</button>` : ''}
     </div>
-    ${!canWrite ? `<div style="max-width:740px;margin:0 auto 16px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.35);color:#e0b830;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;">🔒 Lecture seule — seuls les officiers assignés à cette injonction peuvent la modifier.</div>` : ''}
+    ${!canWrite ? `<div style="max-width:1060px;margin:0 auto 16px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.35);color:#e0b830;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;">🔒 Lecture seule — seuls les officiers assignés à cette injonction peuvent la modifier.</div>` : ''}
 
     <div class="mandat-wrap" style="padding-top:0;">
         <div class="mandat-doc" contenteditable="false">
@@ -11048,7 +11048,7 @@ function renderBilanEditor(container) {
         <button class="btn-toolbar" onclick="exportBilanToGoogleDocs('${id}')" style="background:rgba(15,157,88,0.15);color:#5fd68f;border:1px solid rgba(15,157,88,0.4);">📤 Exporter vers Google Docs</button>
         ${canWrite ? `<button class="btn-toolbar" onclick="renameBilan('${id}')" style="background:rgba(201,162,39,0.15);color:#C9A227;border:1px solid rgba(201,162,39,0.3);">✏️ Renommer</button>` : ''}
     </div>
-    ${!canWrite ? `<div style="max-width:740px;margin:0 auto 16px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.35);color:#e0b830;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;">🔒 Lecture seule — seuls les officiers assignés à ce bilan peuvent le modifier.</div>` : ''}
+    ${!canWrite ? `<div style="max-width:1060px;margin:0 auto 16px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.35);color:#e0b830;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;">🔒 Lecture seule — seuls les officiers assignés à ce bilan peuvent le modifier.</div>` : ''}
 
     <div class="mandat-wrap" style="padding-top:0;">
         <div class="mandat-doc" contenteditable="false">
@@ -11758,7 +11758,7 @@ function renderTelephoniqueEditor(container) {
         <button class="btn-toolbar" onclick="exportTelephoniqueToGoogleDocs('${id}')" style="background:rgba(15,157,88,0.15);color:#5fd68f;border:1px solid rgba(15,157,88,0.4);">📤 Exporter vers Google Docs</button>
         ${canWrite ? `<button class="btn-toolbar" onclick="renameTelephonique('${id}')" style="background:rgba(201,162,39,0.15);color:#C9A227;border:1px solid rgba(201,162,39,0.3);">✏️ Renommer</button>` : ''}
     </div>
-    ${!canWrite ? `<div style="max-width:740px;margin:0 auto 16px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.35);color:#e0b830;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;">🔒 Lecture seule — seuls les officiers assignés à ce mandat téléphonique peuvent le modifier.</div>` : ''}
+    ${!canWrite ? `<div style="max-width:1060px;margin:0 auto 16px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.35);color:#e0b830;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;">🔒 Lecture seule — seuls les officiers assignés à ce mandat téléphonique peuvent le modifier.</div>` : ''}
 
     <div class="mandat-wrap" style="padding-top:0;">
         <div class="mandat-doc" contenteditable="false">
@@ -12489,7 +12489,7 @@ function renderBilanTelEditor(container) {
         <button class="btn-toolbar" onclick="exportBilanTelToGoogleDocs('${id}')" style="background:rgba(15,157,88,0.15);color:#5fd68f;border:1px solid rgba(15,157,88,0.4);">📤 Exporter vers Google Docs</button>
         ${canWrite ? `<button class="btn-toolbar" onclick="renameBilanTel('${id}')" style="background:rgba(201,162,39,0.15);color:#C9A227;border:1px solid rgba(201,162,39,0.3);">✏️ Renommer</button>` : ''}
     </div>
-    ${!canWrite ? `<div style="max-width:740px;margin:0 auto 16px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.35);color:#e0b830;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;">🔒 Lecture seule — seuls les officiers assignés à ce bilan téléphonique peuvent le modifier.</div>` : ''}
+    ${!canWrite ? `<div style="max-width:1060px;margin:0 auto 16px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.35);color:#e0b830;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;text-align:center;">🔒 Lecture seule — seuls les officiers assignés à ce bilan téléphonique peuvent le modifier.</div>` : ''}
 
     <div class="mandat-wrap" style="padding-top:0;">
         <div class="mandat-doc" contenteditable="false">
