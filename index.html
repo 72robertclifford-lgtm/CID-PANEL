@@ -10406,13 +10406,23 @@ function injonctionRenderEntries() {
     if (!container || !f) return;
     if (!f.entries) f.entries = [];
     const canWrite = injonctionCanWrite();
-    container.innerHTML = f.entries.map((entry, i) => `
+    container.innerHTML = f.entries.map((entry, i) => {
+        const isUrl = (entry.text || '').trim().startsWith('http');
+        let host = '';
+        if (isUrl) { try { host = new URL(entry.text.trim()).hostname.replace(/^www\./, ''); } catch(e) {} }
+        return `
         <div class="m-entry-item">
             <div class="m-entry-top">
                 <span class="m-pin">📌</span>
                 <input type="text" class="m-entry-date" value="${rapEsc(entry.date)}" oninput="injonctionEntryDateField(${i},this.value)" title="Cliquez pour modifier la date" ${canWrite?'':'readonly'}>
-                <input type="text" class="m-entry-text" value="${rapEsc(entry.text)}" placeholder="Description de l'information..." oninput="injonctionEntryField(${i},this.value)" ${canWrite?'':'readonly'}>
-                ${_linkIconIfUrl(entry.text)}
+                <input type="text" class="m-entry-text" value="${rapEsc(entry.text)}" placeholder="Description ou lien https://..." oninput="injonctionEntryField(${i},this.value)" ${canWrite?'':'readonly'}>
+                ${isUrl ? `<a href="${rapEsc(entry.text.trim())}" target="_blank" rel="noopener"
+                    onmouseenter="showLinkPreview(event,'${entry.text.trim().replace(/'/g,"\\'")}')"
+                    onmousemove="positionLinkPreview(event)"
+                    onmouseleave="hideLinkPreview()"
+                    style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;background:#0D2B5E;color:#C9A227;border-radius:7px;font-size:11px;font-weight:700;text-decoration:none;white-space:nowrap;flex-shrink:0;">
+                    ${_getLinkIcon(entry.text)} ${host ? host.substring(0,22) : 'Ouvrir'}
+                </a>` : _linkIconIfUrl(entry.text)}
                 ${canWrite ? `<button class="m-entry-del" onclick="injonctionDelEntry(${i})" title="Supprimer">✕</button>` : ''}
             </div>
             ${canWrite ? `
@@ -10428,8 +10438,8 @@ function injonctionRenderEntries() {
                     ${canWrite ? `<button onclick="injonctionDelPhoto(${i},${pi})">✕</button>` : ''}
                 </div>`).join('')}
             </div>` : ''}
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
 }
 
 // ---- Liens externes (section dédiée) ----
