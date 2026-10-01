@@ -9106,6 +9106,7 @@ function blankMandatForm() {
         faits: ['', '', ''],
         infoText: '',
         entries: [],
+        notes: [],
         documents: [
             { label: "Demande d'injonction immobilière", url: '' },
             { label: 'Injonction immobilière', url: '' }
@@ -9488,6 +9489,13 @@ function renderMandatEditor(container) {
                             <div class="m-dossier-note" contenteditable="${canWrite}" oninput="mandatNoteField(this.textContent)" id="mandatDossierNote">${rapEsc(f.note)}</div>
                         </div>
                     </div>
+                    <div class="m-section-box">
+                        <div class="m-section-header"><span class="m-sh-icon">📝</span> Notes et contexte</div>
+                        <div style="padding:10px 14px 14px;">
+                            <div id="mandatNotesList"></div>
+                            ${canWrite ? `<button class="m-add-entry-btn" onclick="mandatAddNote()" style="margin-top:6px;">+ Ajouter une note / bloc de contexte</button>` : ''}
+                        </div>
+                    </div>
                     <div id="mandatSignaturesWrap" class="m-signatures-wrap"></div>
                     <div class="m-page-footer">Page 3 / 3 — CID Confidentiel</div>
                 </div>
@@ -9499,6 +9507,7 @@ function renderMandatEditor(container) {
     mandatRenderDocuments();
     mandatRenderOfficiers();
     mandatRenderFaits();
+    mandatRenderNotes();
 }
 
 function mandatField(key, value) {
@@ -9579,15 +9588,69 @@ function mandatRenderEntries() {
                 <input type="file" class="file-input" accept="image/*" multiple style="display:none;" onchange="mandatAddPhoto(${i},this)">
             </div>` : ''}
             ${(entry.photos||[]).length ? `
-            <div class="m-entry-photos">
-                ${(entry.photos||[]).map((ph, pi) => `
-                <div class="m-entry-photo">
-                    <img src="${ph}" onclick="openPhoto('${ph}')">
-                    ${canWrite ? `<button onclick="mandatDelPhoto(${i},${pi})">✕</button>` : ''}
-                </div>`).join('')}
+            <div class="m-entry-photos" style="flex-wrap:wrap;gap:12px;display:flex;margin-top:8px;">
+                ${(entry.photos||[]).map((ph, pi) => {
+                    const url = typeof ph === 'object' ? ph.url : ph;
+                    const caption = typeof ph === 'object' ? (ph.caption || '') : '';
+                    return `
+                <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
+                    <div class="m-entry-photo">
+                        <img src="${url}" onclick="openPhoto('${url}')">
+                        ${canWrite ? `<button onclick="mandatDelPhoto(${i},${pi})">✕</button>` : ''}
+                    </div>
+                    <input type="text" value="${rapEsc(caption)}" placeholder="Légende..." oninput="mandatPhotoCaption(${i},${pi},this.value)" ${canWrite?'':'readonly'} style="width:92px;font-size:10.5px;border:none;border-bottom:1px solid #ddd;background:transparent;text-align:center;outline:none;color:#555;padding:2px 0;">
+                </div>`;
+                }).join('')}
             </div>` : ''}
         </div>
     `).join('');
+}
+
+// ---- Notes / blocs de contexte ----
+function mandatRenderNotes() {
+    const container = document.getElementById('mandatNotesList');
+    const m = cidMandats.find(x => x.id === currentMandatId);
+    const f = m?.form;
+    if (!container || !f) return;
+    if (!f.notes) f.notes = [];
+    const canWrite = canEditMandat(currentMandatId);
+    if (!f.notes.length) {
+        container.innerHTML = canWrite ? '' : '<p style="font-size:12.5px;color:rgba(0,0,0,0.4);font-style:italic;margin:0;">Aucune note ajoutée.</p>';
+        return;
+    }
+    container.innerHTML = f.notes.map((note, i) => `
+        <div style="background:#fff;border:1px solid rgba(201,162,39,0.25);border-left:4px solid #C9A227;border-radius:10px;padding:12px 14px;margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span style="font-size:14px;">📝</span>
+                <input type="text" value="${rapEsc(note.title || '')}" placeholder="Titre de la note..." oninput="mandatNoteTitleField(${i},this.value)" ${canWrite?'':'readonly'} style="flex:1;border:none;border-bottom:1px solid rgba(201,162,39,0.3);background:transparent;color:#0D2B5E;font-weight:700;font-size:13px;padding:2px 4px;outline:none;">
+                ${canWrite ? `<button type="button" onclick="mandatRemoveNote(${i})" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:16px;padding:2px 6px;">✕</button>` : ''}
+            </div>
+            <textarea oninput="mandatNoteTextField(${i},this.value)" placeholder="Contenu de la note, contexte, informations importantes..." ${canWrite?'':'readonly'} style="width:100%;min-height:80px;border:1px solid rgba(201,162,39,0.15);border-radius:8px;background:rgba(255,253,249,0.8);color:#333;font-size:13.5px;font-family:Georgia,serif;padding:10px 12px;box-sizing:border-box;resize:vertical;outline:none;line-height:1.6;">${rapEsc(note.text || '')}</textarea>
+        </div>`).join('');
+}
+function mandatAddNote() {
+    const m = cidMandats.find(x => x.id === currentMandatId);
+    if (!m?.form) return;
+    if (!m.form.notes) m.form.notes = [];
+    m.form.notes.push({ title: '', text: '' });
+    mandatSaveData();
+    mandatRenderNotes();
+    setTimeout(() => { const els = document.querySelectorAll('#mandatNotesList input[type=text]'); if (els.length) els[els.length-1].focus(); }, 80);
+}
+function mandatNoteTitleField(i, value) {
+    const m = cidMandats.find(x => x.id === currentMandatId);
+    if (!m?.form?.notes?.[i]) return;
+    m.form.notes[i].title = value; mandatSaveData();
+}
+function mandatNoteTextField(i, value) {
+    const m = cidMandats.find(x => x.id === currentMandatId);
+    if (!m?.form?.notes?.[i]) return;
+    m.form.notes[i].text = value; mandatSaveData();
+}
+function mandatRemoveNote(i) {
+    const m = cidMandats.find(x => x.id === currentMandatId);
+    if (!m?.form?.notes) return;
+    m.form.notes.splice(i, 1); mandatSaveData(); mandatRenderNotes();
 }
 
 function mandatAddEntry() {
@@ -9625,13 +9688,25 @@ function mandatEntryDateField(i, value) {
     mandatSaveData();
 }
 
+function mandatPhotoCaption(entryIdx, photoIdx, caption) {
+    const f = mandatForm();
+    if (!f?.entries?.[entryIdx]?.photos) return;
+    const ph = f.entries[entryIdx].photos[photoIdx];
+    if (typeof ph === 'string') {
+        f.entries[entryIdx].photos[photoIdx] = { url: ph, caption };
+    } else {
+        f.entries[entryIdx].photos[photoIdx].caption = caption;
+    }
+    mandatSaveData();
+}
+
 async function mandatAddPhoto(i, input) {
     if (!mandatCanWrite()) return;
     const f = mandatForm();
     if (!f || !input.files.length) return;
     const urls = await uploadFilesToImgbb(input.files);
     if (!f.entries[i].photos) f.entries[i].photos = [];
-    f.entries[i].photos.push(...urls);
+    f.entries[i].photos.push(...urls.map(url => ({ url, caption: '' })));
     mandatSaveData();
     mandatRenderEntries();
 }
@@ -9644,7 +9719,7 @@ async function mandatDropPhoto(i, e) {
     if (!f) return;
     const urls = await uploadFilesToImgbb(e.dataTransfer.files);
     if (!f.entries[i].photos) f.entries[i].photos = [];
-    f.entries[i].photos.push(...urls);
+    f.entries[i].photos.push(...urls.map(url => ({ url, caption: '' })));
     mandatSaveData();
     mandatRenderEntries();
 }
@@ -9938,7 +10013,8 @@ function blankInjonctionForm() {
             { proprietaire: '', numero: '', adresse: '' }
         ],
         entries: [],
-        links: []
+        links: [],
+        notes: []
     };
 }
 
@@ -10166,6 +10242,7 @@ function renderInjonctionEditor(container) {
     if (f.critere !== 'numero' && f.critere !== 'nom') f.critere = 'numero';
     if (!f.entries) f.entries = [];
     if (!f.links) f.links = [];
+    if (!f.notes) f.notes = [];
     if (!f.officiers) f.officiers = [];
     // Migration : ancien format (string) -> objet {username, label}
     f.officiers = f.officiers.map(o => typeof o === 'string' ? { username: null, label: o } : o).filter(o => o && o.label);
@@ -10257,6 +10334,15 @@ function renderInjonctionEditor(container) {
                         </div>
                     </div>
 
+
+                    <div class="m-section-box">
+                        <div class="m-section-header"><span class="m-sh-icon">📝</span> Notes et contexte</div>
+                        <div style="padding:10px 14px 14px;">
+                            <div id="injonctionNotesList"></div>
+                            ${canWrite ? `<button class="m-add-entry-btn" onclick="injonctionAddNote()" style="margin-top:6px;">+ Ajouter une note / bloc de contexte</button>` : ''}
+                        </div>
+                    </div>
+
                     <div class="m-section-box">
                         <div class="m-section-header"><span class="m-sh-icon">📎</span> Preuves (Liens, photos, dépositions)</div>
                         <div style="padding:14px 16px 18px;background:rgba(210,150,190,0.08);">
@@ -10294,6 +10380,7 @@ function renderInjonctionEditor(container) {
     injonctionRenderOfficiers();
     injonctionRenderRows();
     injonctionRenderLinks();
+    injonctionRenderNotes();
     injonctionRenderCritere();
 }
 
@@ -10413,19 +10500,21 @@ function injonctionRenderEntries() {
         let host = '';
         if (isUrl) { try { host = new URL(entry.text.trim()).hostname.replace(/^www\./, ''); } catch(e) {} }
         return `
-        <div class="m-entry-item">
-            <div class="m-entry-top">
-                <span class="m-pin">📌</span>
-                <input type="text" class="m-entry-date" value="${rapEsc(entry.date)}" oninput="injonctionEntryDateField(${i},this.value)" title="Cliquez pour modifier la date" ${canWrite?'':'readonly'}>
-                <input type="text" class="m-entry-text" value="${rapEsc(entry.text)}" placeholder="Description ou lien https://..." oninput="injonctionEntryField(${i},this.value)" ${canWrite?'':'readonly'}>
-                ${isUrl ? `<a href="${rapEsc(entry.text.trim())}" target="_blank" rel="noopener"
+        <div class="m-entry-item" style="padding:12px 14px 14px;">
+            <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;">
+                <span class="m-pin" style="margin-top:2px;">📌</span>
+                <input type="text" class="m-entry-date" value="${rapEsc(entry.date)}" oninput="injonctionEntryDateField(${i},this.value)" title="Date" ${canWrite?'':'readonly'} style="flex-shrink:0;width:100px;">
+                ${canWrite ? `<button class="m-entry-del" onclick="injonctionDelEntry(${i})" title="Supprimer" style="margin-left:auto;">✕</button>` : ''}
+            </div>
+            <textarea class="m-entry-text" placeholder="Description, contexte, informations..." oninput="injonctionEntryField(${i},this.value);this.style.height='auto';this.style.height=this.scrollHeight+'px'" ${canWrite?'':'readonly'} style="width:100%;box-sizing:border-box;min-height:60px;resize:none;overflow:hidden;border:1px solid rgba(201,162,39,0.25);border-radius:8px;padding:10px 12px;font-family:Georgia,serif;font-size:14px;line-height:1.6;background:rgba(255,253,249,0.8);color:#333;outline:none;">${rapEsc(entry.text)}</textarea>
+            ${isUrl ? `<div style="margin-top:6px;"><a href="${rapEsc(entry.text.trim())}" target="_blank" rel="noopener"
                     onmouseenter="showLinkPreview(event,'${entry.text.trim().replace(/'/g,"\\'")}')"
                     onmousemove="positionLinkPreview(event)"
                     onmouseleave="hideLinkPreview()"
-                    style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;background:#0D2B5E;color:#C9A227;border-radius:7px;font-size:11px;font-weight:700;text-decoration:none;white-space:nowrap;flex-shrink:0;">
+                    style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;background:#0D2B5E;color:#C9A227;border-radius:7px;font-size:11px;font-weight:700;text-decoration:none;">
                     ${_getLinkIcon(entry.text)} ${host ? host.substring(0,22) : 'Ouvrir'}
-                </a>` : _linkIconIfUrl(entry.text)}
-                ${canWrite ? `<button class="m-entry-del" onclick="injonctionDelEntry(${i})" title="Supprimer">✕</button>` : ''}
+                </a></div>` : ''}
+                ${canWrite ? `<button class="m-entry-del" onclick="injonctionDelEntry(${i})" title="Supprimer" style="display:none;">✕</button>` : ''}
             </div>
             ${canWrite ? `
             <div class="m-entry-dropzone" ondrop="injonctionDropPhoto(${i},event)" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" onclick="this.querySelector('input').click()">
@@ -10433,12 +10522,19 @@ function injonctionRenderEntries() {
                 <input type="file" class="file-input" accept="image/*" multiple style="display:none;" onchange="injonctionAddPhoto(${i},this)">
             </div>` : ''}
             ${(entry.photos||[]).length ? `
-            <div class="m-entry-photos">
-                ${(entry.photos||[]).map((ph, pi) => `
-                <div class="m-entry-photo">
-                    <img src="${ph}" onclick="openPhoto('${ph}')">
-                    ${canWrite ? `<button onclick="injonctionDelPhoto(${i},${pi})">✕</button>` : ''}
-                </div>`).join('')}
+            <div class="m-entry-photos" style="flex-wrap:wrap;gap:12px;display:flex;margin-top:8px;">
+                ${(entry.photos||[]).map((ph, pi) => {
+                    const url = typeof ph === 'object' ? ph.url : ph;
+                    const caption = typeof ph === 'object' ? (ph.caption || '') : '';
+                    return `
+                <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
+                    <div class="m-entry-photo">
+                        <img src="${url}" onclick="openPhoto('${url}')">
+                        ${canWrite ? `<button onclick="injonctionDelPhoto(${i},${pi})">✕</button>` : ''}
+                    </div>
+                    <input type="text" value="${rapEsc(caption)}" placeholder="Légende..." oninput="injonctionPhotoCaption(${i},${pi},this.value)" ${canWrite?'':'readonly'} style="width:92px;font-size:10.5px;border:none;border-bottom:1px solid #ddd;background:transparent;text-align:center;outline:none;color:#555;padding:2px 0;">
+                </div>`;
+                }).join('')}
             </div>` : ''}
         </div>`;
     }).join('');
@@ -10526,6 +10622,57 @@ function injonctionRemoveLink(i) {
     injonctionRenderLinks();
 }
 
+// ---- Notes / blocs de contexte ----
+function injonctionRenderNotes() {
+    const container = document.getElementById('injonctionNotesList');
+    const f = injonctionForm();
+    if (!container || !f) return;
+    if (!f.notes) f.notes = [];
+    const canWrite = injonctionCanWrite();
+    if (!f.notes.length) {
+        container.innerHTML = canWrite ? '' : '<p style="font-size:12.5px;color:rgba(0,0,0,0.4);font-style:italic;margin:0;">Aucune note ajoutée.</p>';
+        return;
+    }
+    container.innerHTML = f.notes.map((note, i) => `
+        <div style="background:#fff;border:1px solid rgba(201,162,39,0.25);border-left:4px solid #C9A227;border-radius:10px;padding:12px 14px;margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span style="font-size:14px;">📝</span>
+                <input type="text" value="${rapEsc(note.title || '')}" placeholder="Titre de la note..." oninput="injonctionNoteField(${i},'title',this.value)" ${canWrite?'':'readonly'} style="flex:1;border:none;border-bottom:1px solid rgba(201,162,39,0.3);background:transparent;color:#0D2B5E;font-weight:700;font-size:13px;padding:2px 4px;outline:none;">
+                ${canWrite ? `<button type="button" onclick="injonctionRemoveNote(${i})" style="background:none;border:none;color:#ccc;cursor:pointer;font-size:16px;padding:2px 6px;" title="Supprimer">✕</button>` : ''}
+            </div>
+            <textarea oninput="injonctionNoteField(${i},'text',this.value)" placeholder="Contenu de la note, contexte, informations importantes..." ${canWrite?'':'readonly'} style="width:100%;min-height:80px;border:1px solid rgba(201,162,39,0.15);border-radius:8px;background:rgba(255,253,249,0.8);color:#333;font-size:13.5px;font-family:Georgia,serif;padding:10px 12px;box-sizing:border-box;resize:vertical;outline:none;line-height:1.6;">${rapEsc(note.text || '')}</textarea>
+        </div>`).join('');
+}
+
+function injonctionAddNote() {
+    const f = injonctionForm();
+    if (!f) return;
+    if (!f.notes) f.notes = [];
+    f.notes.push({ title: '', text: '' });
+    injonctionSaveData();
+    injonctionRenderNotes();
+    // Focus sur le titre du nouveau bloc
+    setTimeout(() => {
+        const inputs = document.querySelectorAll('#injonctionNotesList input[type=text]');
+        if (inputs.length) inputs[inputs.length - 1].focus();
+    }, 80);
+}
+
+function injonctionNoteField(i, field, value) {
+    const f = injonctionForm();
+    if (!f || !f.notes || !f.notes[i]) return;
+    f.notes[i][field] = value;
+    injonctionSaveData();
+}
+
+function injonctionRemoveNote(i) {
+    const f = injonctionForm();
+    if (!f || !f.notes) return;
+    f.notes.splice(i, 1);
+    injonctionSaveData();
+    injonctionRenderNotes();
+}
+
 function injonctionAddEntry() {
     if (!injonctionCanWrite()) return;
     const f = injonctionForm();
@@ -10561,13 +10708,25 @@ function injonctionEntryDateField(i, value) {
     injonctionSaveData();
 }
 
+function injonctionPhotoCaption(entryIdx, photoIdx, caption) {
+    const f = injonctionForm();
+    if (!f?.entries?.[entryIdx]?.photos?.[photoIdx] === undefined) return;
+    const ph = f.entries[entryIdx].photos[photoIdx];
+    if (typeof ph === 'string') {
+        f.entries[entryIdx].photos[photoIdx] = { url: ph, caption };
+    } else {
+        f.entries[entryIdx].photos[photoIdx].caption = caption;
+    }
+    injonctionSaveData();
+}
+
 async function injonctionAddPhoto(i, input) {
     if (!injonctionCanWrite()) return;
     const f = injonctionForm();
     if (!f || !input.files.length) return;
     const urls = await uploadFilesToImgbb(input.files);
     if (!f.entries[i].photos) f.entries[i].photos = [];
-    f.entries[i].photos.push(...urls);
+    f.entries[i].photos.push(...urls.map(url => ({ url, caption: "" })));
     injonctionSaveData();
     injonctionRenderEntries();
 }
@@ -10580,7 +10739,7 @@ async function injonctionDropPhoto(i, e) {
     if (!f) return;
     const urls = await uploadFilesToImgbb(e.dataTransfer.files);
     if (!f.entries[i].photos) f.entries[i].photos = [];
-    f.entries[i].photos.push(...urls);
+    f.entries[i].photos.push(...urls.map(url => ({ url, caption: "" })));
     injonctionSaveData();
     injonctionRenderEntries();
 }
