@@ -692,24 +692,24 @@
             border-radius: 20px; letter-spacing: 0.3px;
         }
         .dossiers-grid-compact {
-            grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-            gap: 14px;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 16px;
         }
-        .dossiers-grid-compact .dossier-card-top { padding: 13px 14px 10px; gap: 11px; }
+        .dossiers-grid-compact .dossier-card-top { padding: 14px 16px 12px; gap: 12px; }
         .dossiers-grid-compact .dossier-card-icon {
-            width: 36px; height: 36px; font-size: 17px; border-radius: 10px;
+            width: 40px; height: 40px; font-size: 19px; border-radius: 11px;
         }
         .dossiers-grid-compact .dossier-card h3 {
-            font-size: 13px; margin-bottom: 5px; line-height: 1.3;
+            font-size: 14px; margin-bottom: 5px; line-height: 1.35;
             white-space: normal; overflow: visible; text-overflow: unset;
             word-break: break-word; display: block;
         }
         .dossiers-grid-compact .dossier-card-meta { gap: 4px; }
-        .dossiers-grid-compact .dossier-card-meta span { font-size: 10px; }
-        .dossiers-grid-compact .dossier-card-actions { padding: 9px 11px 11px; gap: 6px; }
-        .dossiers-grid-compact .dossier-card-actions-row { gap: 5px; }
-        .dossiers-grid-compact .dcard-btn { padding: 7px 4px; font-size: 10px; }
-        .dossiers-grid-compact .dcard-btn-open { padding: 9px; font-size: 12px; }
+        .dossiers-grid-compact .dossier-card-meta span { font-size: 11px; }
+        .dossiers-grid-compact .dossier-card-actions { padding: 10px 13px 12px; gap: 7px; }
+        .dossiers-grid-compact .dossier-card-actions-row { gap: 6px; }
+        .dossiers-grid-compact .dcard-btn { padding: 8px 6px; font-size: 10.5px; }
+        .dossiers-grid-compact .dcard-btn-open { padding: 10px; font-size: 13px; }
         .dossiers-grid-compact .dossier-card::before { height: 3px; }
         /* La carte survolée/cliquée grossit légèrement et passe au-dessus des autres */
         .dossiers-grid-compact .dossier-card {
@@ -9156,11 +9156,13 @@ function canViewMandat(id) {
     return (_mandatAccess[id] || []).length > 0;
 }
 
-// ---- Permission d'écriture : réservée aux officiers assignés sur CE mandat (+ Master Investigator/Commanding toujours) ----
+// ---- Permission d'écriture : réservée aux officiers assignés sur CE mandat. Supervisor/Commanding/Admin ont toujours accès en écriture. ----
 function canEditMandat(id) {
+    if (!currentUser) return false;
+    if (getPermLevel() === 'supervisor') return true;
     const m = cidMandats.find(x => x.id === id);
-    if (!m || !m.form || !m.form.officiers || !currentUser) return false;
-    return m.form.officiers.some(o => o && o.username && o.username === currentUser.username);
+    if (!m || !m.form || !m.form.officiers) return false;
+    return m.form.officiers.some(o => o && o.username && o.username === currentUser.username) || getDocEditors('mandat', id).includes(currentUser.username);
 }
 function mandatCanWrite() {
     return canEditMandat(currentMandatId);
@@ -9220,6 +9222,7 @@ function renderMandatsList(container) {
                 <button class="dcard-btn dcard-btn-open" onclick="openMandat('${m.id}')">📜 Ouvrir le mandat</button>
                 <div class="dossier-card-actions-row">
                     <button class="dcard-btn" onclick="copyMandatLink('${m.id}')" style="background:rgba(123,45,139,0.12);color:#7B2D8B;border:1px solid rgba(123,45,139,0.3);">🔗 Copier le lien</button>
+                    <button class="dcard-btn" id="editorsbtn-mandat-${m.id}" style="${getEditorsBtnStyle('mandat',m.id)}" onclick="openEditorsModal('mandat','${m.id}','${m.name}')">${getEditorsBtnLabel('mandat',m.id)}</button>
                     ${canWrite ? `<button class="dcard-btn dcard-btn-rename" onclick="renameMandat('${m.id}')">✏️ Renommer</button>` : ''}
                     ${canDeleteDossier() ? `<button class="dcard-btn dcard-btn-del" onclick="deleteMandat('${m.id}')">🗑 Suppr.</button>` : ''}
                 </div>
@@ -10059,11 +10062,13 @@ function canViewInjonction(id) {
     return (_injonctionAccess[id] || []).length > 0;
 }
 
-// ---- Permission d'écriture : réservée aux officiers assignés sur CE injonction (+ Master Investigator/Commanding toujours) ----
+// ---- Permission d'écriture : réservée aux officiers assignés sur CE injonction. Supervisor/Commanding/Admin ont toujours accès en écriture. ----
 function canEditInjonction(id) {
+    if (!currentUser) return false;
+    if (getPermLevel() === 'supervisor') return true;
     const m = cidInjonctions.find(x => x.id === id);
-    if (!m || !m.form || !m.form.officiers || !currentUser) return false;
-    return m.form.officiers.some(o => o && o.username && o.username === currentUser.username);
+    if (!m || !m.form || !m.form.officiers) return false;
+    return m.form.officiers.some(o => o && o.username && o.username === currentUser.username) || getDocEditors('injonction', id).includes(currentUser.username);
 }
 function injonctionCanWrite() {
     return canEditInjonction(currentInjonctionId);
@@ -10123,6 +10128,7 @@ function renderInjonctionsList(container) {
                 <button class="dcard-btn dcard-btn-open" onclick="openInjonction('${m.id}')">🏠 Ouvrir l'injonction</button>
                 <div class="dossier-card-actions-row">
                     <button class="dcard-btn" onclick="copyInjonctionLink('${m.id}')" style="background:rgba(123,45,139,0.12);color:#7B2D8B;border:1px solid rgba(123,45,139,0.3);">🔗 Copier le lien</button>
+                    <button class="dcard-btn" id="editorsbtn-injonction-${m.id}" style="${getEditorsBtnStyle('injonction',m.id)}" onclick="openEditorsModal('injonction','${m.id}','${m.name}')">${getEditorsBtnLabel('injonction',m.id)}</button>
                     ${canWrite ? `<button class="dcard-btn dcard-btn-rename" onclick="renameInjonction('${m.id}')">✏️ Renommer</button>` : ''}
                     ${canDeleteDossier() ? `<button class="dcard-btn dcard-btn-del" onclick="deleteInjonction('${m.id}')">🗑 Suppr.</button>` : ''}
                 </div>
@@ -11017,11 +11023,13 @@ function canViewBilan(id) {
     return (_bilanAccess[id] || []).length > 0;
 }
 
-// ---- Permission d'écriture : réservée aux officiers assignés sur CE bilan (+ Master Investigator/Commanding toujours) ----
+// ---- Permission d'écriture : réservée aux officiers assignés sur CE bilan. Supervisor/Commanding/Admin ont toujours accès en écriture. ----
 function canEditBilan(id) {
+    if (!currentUser) return false;
+    if (getPermLevel() === 'supervisor') return true;
     const m = cidBilans.find(x => x.id === id);
-    if (!m || !m.form || !m.form.officiers || !currentUser) return false;
-    return m.form.officiers.some(o => o && o.username && o.username === currentUser.username);
+    if (!m || !m.form || !m.form.officiers) return false;
+    return m.form.officiers.some(o => o && o.username && o.username === currentUser.username) || getDocEditors('bilan', id).includes(currentUser.username);
 }
 function bilanCanWrite() {
     return canEditBilan(currentBilanId);
@@ -11081,6 +11089,7 @@ function renderBilansList(container) {
                 <button class="dcard-btn dcard-btn-open" onclick="openBilan('${m.id}')">🏠 Ouvrir le bilan</button>
                 <div class="dossier-card-actions-row">
                     <button class="dcard-btn" onclick="copyBilanLink('${m.id}')" style="background:rgba(123,45,139,0.12);color:#7B2D8B;border:1px solid rgba(123,45,139,0.3);">🔗 Copier le lien</button>
+                    <button class="dcard-btn" id="editorsbtn-bilan-${m.id}" style="${getEditorsBtnStyle('bilan',m.id)}" onclick="openEditorsModal('bilan','${m.id}','${m.name}')">${getEditorsBtnLabel('bilan',m.id)}</button>
                     ${canWrite ? `<button class="dcard-btn dcard-btn-rename" onclick="renameBilan('${m.id}')">✏️ Renommer</button>` : ''}
                     ${canDeleteDossier() ? `<button class="dcard-btn dcard-btn-del" onclick="deleteBilan('${m.id}')">🗑 Suppr.</button>` : ''}
                 </div>
@@ -11727,11 +11736,13 @@ function canViewTelephonique(id) {
     return (_telephoniqueAccess[id] || []).length > 0;
 }
 
-// ---- Permission d'écriture : réservée aux officiers assignés sur CE telephonique (+ Master Investigator/Commanding toujours) ----
+// ---- Permission d'écriture : réservée aux officiers assignés sur CE telephonique. Supervisor/Commanding/Admin ont toujours accès en écriture. ----
 function canEditTelephonique(id) {
+    if (!currentUser) return false;
+    if (getPermLevel() === 'supervisor') return true;
     const m = cidTelephoniques.find(x => x.id === id);
-    if (!m || !m.form || !m.form.officiers || !currentUser) return false;
-    return m.form.officiers.some(o => o && o.username && o.username === currentUser.username);
+    if (!m || !m.form || !m.form.officiers) return false;
+    return m.form.officiers.some(o => o && o.username && o.username === currentUser.username) || getDocEditors('telephonique', id).includes(currentUser.username);
 }
 function telephoniqueCanWrite() {
     return canEditTelephonique(currentTelephoniqueId);
@@ -11791,6 +11802,7 @@ function renderTelephoniquesList(container) {
                 <button class="dcard-btn dcard-btn-open" onclick="openTelephonique('${m.id}')">📱 Ouvrir le mandat</button>
                 <div class="dossier-card-actions-row">
                     <button class="dcard-btn" onclick="copyTelephoniqueLink('${m.id}')" style="background:rgba(123,45,139,0.12);color:#7B2D8B;border:1px solid rgba(123,45,139,0.3);">🔗 Copier le lien</button>
+                    <button class="dcard-btn" id="editorsbtn-telephonique-${m.id}" style="${getEditorsBtnStyle('telephonique',m.id)}" onclick="openEditorsModal('telephonique','${m.id}','${m.name}')">${getEditorsBtnLabel('telephonique',m.id)}</button>
                     ${canWrite ? `<button class="dcard-btn dcard-btn-rename" onclick="renameTelephonique('${m.id}')">✏️ Renommer</button>` : ''}
                     ${canDeleteDossier() ? `<button class="dcard-btn dcard-btn-del" onclick="deleteTelephonique('${m.id}')">🗑 Suppr.</button>` : ''}
                 </div>
@@ -12444,11 +12456,13 @@ function canViewBilanTel(id) {
     return (_bilanTelAccess[id] || []).length > 0;
 }
 
-// ---- Permission d'écriture : réservée aux officiers assignés sur CE bilanTel (+ Master Investigator/Commanding toujours) ----
+// ---- Permission d'écriture : réservée aux officiers assignés sur CE bilanTel. Supervisor/Commanding/Admin ont toujours accès en écriture. ----
 function canEditBilanTel(id) {
+    if (!currentUser) return false;
+    if (getPermLevel() === 'supervisor') return true;
     const m = cidBilanTels.find(x => x.id === id);
-    if (!m || !m.form || !m.form.officiers || !currentUser) return false;
-    return m.form.officiers.some(o => o && o.username && o.username === currentUser.username);
+    if (!m || !m.form || !m.form.officiers) return false;
+    return m.form.officiers.some(o => o && o.username && o.username === currentUser.username) || getDocEditors('bilanTel', id).includes(currentUser.username);
 }
 function bilanTelCanWrite() {
     return canEditBilanTel(currentBilanTelId);
@@ -12508,6 +12522,7 @@ function renderBilanTelsList(container) {
                 <button class="dcard-btn dcard-btn-open" onclick="openBilanTel('${m.id}')">📱 Ouvrir le bilan</button>
                 <div class="dossier-card-actions-row">
                     <button class="dcard-btn" onclick="copyBilanTelLink('${m.id}')" style="background:rgba(123,45,139,0.12);color:#7B2D8B;border:1px solid rgba(123,45,139,0.3);">🔗 Copier le lien</button>
+                    <button class="dcard-btn" id="editorsbtn-bilanTel-${m.id}" style="${getEditorsBtnStyle('bilanTel',m.id)}" onclick="openEditorsModal('bilanTel','${m.id}','${m.name}')">${getEditorsBtnLabel('bilanTel',m.id)}</button>
                     ${canWrite ? `<button class="dcard-btn dcard-btn-rename" onclick="renameBilanTel('${m.id}')">✏️ Renommer</button>` : ''}
                     ${canDeleteDossier() ? `<button class="dcard-btn dcard-btn-del" onclick="deleteBilanTel('${m.id}')">🗑 Suppr.</button>` : ''}
                 </div>
@@ -13354,6 +13369,8 @@ function getEditorsBtnLabel(type, id) {
 }
 
 function getEditorsBtnStyle(type, id) {
+    // Caché si non-supervisor et pas impliqué
+    if (getPermLevel() !== 'supervisor' && !isDocEditor(type, id)) return 'display:none;';
     const eds = getDocEditors(type, id);
     return eds.length > 0
         ? 'background:rgba(33,150,243,0.15);color:#42a5f5;border:1px solid rgba(33,150,243,0.35);font-size:10px;font-weight:700;'
